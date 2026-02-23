@@ -12,7 +12,40 @@ import (
 
 var DB *gorm.DB
 
+type User struct {
+	ID uint `gorm:"primaryKey"`
+	FullName string
+	PhoneNumber string
+	Password string
+    Address string
+    MeterNumber string `gorm:"uniqueIndex"`
+	
+}
 
+type Meter struct {
+	ID uint `gorm:"primaryKey"`
+	MeterNumber string `gorm:"uniqueIndex"`
+	MeterType string
+	
+}
+
+type Reading struct {
+	ID uint `gorm:"primaryKey"`
+	MeterNumber string `gorm:"uniqueIndex"`
+	Energy_At_Pole_kwh float64
+	Energy_At_Consumer_kwh float64
+	Timestamp time.Time
+}
+
+type UtilityCenter struct {
+	ID uint `gorm:"primaryKey"`
+	UtilityID string `gorm:"uniqueIndex"`
+	Name string	
+	Region string
+	City string
+	Address string
+	ContactInfo string
+}
 
 func InitDB() {
 	host := os.Getenv("DB_HOST")
