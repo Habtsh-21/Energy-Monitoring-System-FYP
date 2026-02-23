@@ -7,6 +7,8 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
+
+	"energy-monitoring-system/internal/db"
 )
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
@@ -20,6 +22,8 @@ func main() {
 		log.Println("No .env file found, using system environment variables")
 	}
 	log.Println("Environment variables loaded successfully")
+
+	db.InitDB()
 
 	r := mux.NewRouter()
 	r.HandleFunc("/", homeHandler).Methods("GET")
