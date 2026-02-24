@@ -1,7 +1,8 @@
-package auth
+package middleware
 
 import (
 	"context"
+	"energy-monitoring-system/internal/auth"
 	"net/http"
 	"strings"
 
@@ -27,7 +28,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		tokenString := parts[1]
-		token, err := ValidateJWT(tokenString)
+		token, err := auth.ValidateJWT(tokenString)
 		if err != nil || !token.Valid {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return

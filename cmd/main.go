@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	"energy-monitoring-system/internal/auth"
+	"energy-monitoring-system/internal/auth/middleware"
 	"energy-monitoring-system/internal/db"
 	"energy-monitoring-system/internal/handlers"
 
@@ -32,12 +32,19 @@ func main() {
 	r.HandleFunc("/", homeHandler).Methods("GET")
 	r.HandleFunc("/login", handlers.LoginHandler).Methods("POST")
 
-	api := r.PathPrefix("/api").Subrouter()
-	api.Use(auth.AuthMiddleware)
+	user := r.PathPrefix("/user").Subrouter()
+	user.Use(middleware.AuthMiddleware)
 
-	api.HandleFunc("/profile", func(w http.ResponseWriter, r *http.Request) {
-		userID := r.Context().Value(auth.UserIDKey)
+	admin := r.PathPrefix("/admin").Subrouter()
+	admin.Use(middleware.AdminPathPermission)
+
+	user.HandleFunc("/profile", func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Context().Value(middleware.UserIDKey)
 		w.Write([]byte("Hello User " + userID.(string)))
+	}).Methods("GET")
+    
+	admin.HandleFunc("/dashboard",func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Hello Admin"))
 	}).Methods("GET")
 
 	port := os.Getenv("PORT")
