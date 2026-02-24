@@ -4,9 +4,13 @@ import (
 	"log"
 	"net/http"
 	"os"
+
+	"energy-monitoring-system/internal/auth"
+	"energy-monitoring-system/internal/db"
+	"energy-monitoring-system/internal/handlers"
+
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
-	"energy-monitoring-system/internal/db"
 )
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
@@ -24,10 +28,19 @@ func main() {
 	db.InitDB()
 
 	r := mux.NewRouter()
+
 	r.HandleFunc("/", homeHandler).Methods("GET")
+	r.HandleFunc("/login", handlers.LoginHandler).Methods("POST")
+
+	api := r.PathPrefix("/api").Subrouter()
+	api.Use(auth.AuthMiddleware)
+
+	api.HandleFunc("/profile", func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Context().Value(auth.UserIDKey)
+		w.Write([]byte("Hello User " + userID.(string)))
+	}).Methods("GET")
 
 	port := os.Getenv("PORT")
-
 	if port == "" {
 		port = "8080"
 	}
