@@ -4,10 +4,8 @@ import (
 	"log"
 	"net/http"
 	"os"
-
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
-
 	"energy-monitoring-system/internal/db"
 )
 
