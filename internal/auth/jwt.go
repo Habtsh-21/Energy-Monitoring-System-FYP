@@ -5,16 +5,16 @@ import (
 	"os"
 	"time"
 
-	"energy-monitoring-system/internal/db"
+	"energy-monitoring-system/internal/models"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func GenerateJWT(user *db.User) (string, error) {
+func GenerateJWT(user *models.User) (string, error) {
 	jwtSecret := []byte(os.Getenv("JWT_SECRET"))
 	claim := jwt.MapClaims{
 		"user_id":      user.ID,
-		"meter_number": user.MeterNumber,
+		"meter_number": user.Meter.SerialNo,
 		"exp":          time.Now().Add(time.Hour * 24 * 7).Unix(),
 		"iss":          "energy-monitoring-system",
 		"sub":          "access",

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"energy-monitoring-system/internal/auth"
 	"energy-monitoring-system/internal/db"
+	"energy-monitoring-system/internal/models"
 	"energy-monitoring-system/internal/utils"
 	"fmt"
 	"net/http"
@@ -13,7 +14,7 @@ import (
 
 func Login(dbConn *gorm.DB, userId string, password string) (string, error) {
 
-	var user db.User
+	var user models.User
 	if err := dbConn.Where("ID = ?", userId).First(&user).Error; err != nil {
 		return "", fmt.Errorf("invalid credentials")
 	}

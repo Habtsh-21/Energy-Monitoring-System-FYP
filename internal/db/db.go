@@ -12,21 +12,6 @@ import (
 
 var DB *gorm.DB
 
-type User struct {
-	ID          uint `gorm:"primaryKey"`
-	FullName    string
-	PhoneNumber string
-	Password    string
-	Address     string
-	MeterNumber string `gorm:"uniqueIndex"`
-}
-
-type Meter struct {
-	ID          uint   `gorm:"primaryKey"`
-	MeterNumber string `gorm:"uniqueIndex"`
-	
-}
-
 type Reading struct {
 	ID                     uint   `gorm:"primaryKey"`
 	MeterNumber            string `gorm:"uniqueIndex"`
@@ -71,7 +56,7 @@ func InitDB() {
 
 	log.Println("Database connection established successfully")
 
-	err = DB.AutoMigrate(&User{}, &Meter{}, &Reading{}, &UtilityCenter{})
+	err = DB.AutoMigrate(&Reading{}, &UtilityCenter{})
 	if err != nil {
 		log.Fatal("Failed to run migrations:", err)
 	}
