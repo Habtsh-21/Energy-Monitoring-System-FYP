@@ -16,12 +16,12 @@ type Address struct{
 type User struct {
 	ID          uint `gorm:"primaryKey"`
 	FullName    string
-	PhoneNumber string
+	PhoneNumber string `gorm:"uniqueIndex"`
 	Password    string
 	Address     Address `gorm:"embedded"`
-	MeterNumber string `gorm:"uniqueIndex"`
-}
 
+	Meter Meter `gorm:"foreignKey:UserID"`
+}
 
 func(user *User) Create() error {
 	if err := db.DB.Create(user).Error; err != nil {
