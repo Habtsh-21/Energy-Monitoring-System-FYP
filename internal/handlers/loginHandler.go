@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"energy-monitoring-system/internal/auth"
 	"energy-monitoring-system/internal/db"
+	"energy-monitoring-system/internal/utils"
 	"fmt"
 	"net/http"
 
@@ -17,7 +18,7 @@ func Login(dbConn *gorm.DB, userId string, password string) (string, error) {
 		return "", fmt.Errorf("invalid credentials")
 	}
 
-	if err := auth.VerifyPassword(password, user.Password); err != nil {
+	if err := utils.VerifyPassword(password, user.Password); err != nil {
 		return "", fmt.Errorf("invalid credentials")
 	}
 
