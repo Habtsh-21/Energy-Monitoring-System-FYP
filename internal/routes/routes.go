@@ -11,9 +11,9 @@ func RegisterRoutes(r *mux.Router) {
 
 	user := r.PathPrefix("/user").Subrouter()
 	user.Use(middleware.AuthMiddleware)
-	user.HandleFunc("/", handlers.HomeHandler).Methods("GET")
+	user.HandleFunc("/", handlers.UserHomeHandler).Methods("GET")
 
 	admin := r.PathPrefix("/admin").Subrouter()
 	admin.Use(middleware.AdminPathPermission)
-	admin.HandleFunc("/", handlers.HomeHandler).Methods("GET")
+	admin.HandleFunc("/", handlers.AdminHomeHandler).Methods("GET")
 }
