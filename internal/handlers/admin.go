@@ -5,6 +5,8 @@ import (
 	"energy-monitoring-system/internal/models"
 	"energy-monitoring-system/internal/utils"
 	"net/http"
+
+	"github.com/gorilla/mux"
 )
 
 func AdminHomeHandler(w http.ResponseWriter, r *http.Request) {
@@ -15,7 +17,7 @@ func AdminHomeHandler(w http.ResponseWriter, r *http.Request) {
 func UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	var user models.User
-    var err error
+	var err error
 
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -30,13 +32,13 @@ func UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Password must be at least 6 characters", http.StatusBadRequest)
 		return
 	}
-	
+
 	if models.CheckPhoneNumber(user.PhoneNumber) {
 		http.Error(w, "Phone number already exists", http.StatusBadRequest)
 		return
 	}
 	user.ID = utils.IdGenerator()
-    
+
 	if models.CheckId(user.ID) {
 		http.Error(w, "User ID already exists", http.StatusBadRequest)
 		return
@@ -47,7 +49,6 @@ func UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
 		return
 	}
-	
 
 	if err := user.Create(); err != nil {
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
@@ -71,7 +72,8 @@ func GetAllUserHandler(w http.ResponseWriter, r *http.Request) {
 
 func GetUserHandler(w http.ResponseWriter, r *http.Request) {
 
-	userId := r.URL.Query().Get("user_id")
+	vars := mux.Vars(r)
+	userId := vars["id"]
 	if userId == "" {
 		http.Error(w, "User ID is required", http.StatusBadRequest)
 		return
@@ -106,7 +108,8 @@ func UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 
 func DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 
-	userId := r.URL.Query().Get("user_id")
+	vars := mux.Vars(r)
+	userId := vars["id"]
 	if userId == "" {
 		http.Error(w, "User ID is required", http.StatusBadRequest)
 		return
@@ -126,8 +129,6 @@ func DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-
-
 func MeterRegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	var meter models.Meter
@@ -136,9 +137,9 @@ func MeterRegisterHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-    
-	if models.CheckMeterSerialNo(meter.SerialNo){
-		http.Error(w,"Meter serial number already exists", http.StatusBadRequest)
+
+	if models.CheckMeterSerialNo(meter.SerialNo) {
+		http.Error(w, "Meter serial number already exists", http.StatusBadRequest)
 		return
 	}
 
@@ -164,7 +165,8 @@ func GetAllMeterHandler(w http.ResponseWriter, r *http.Request) {
 
 func GetMeterHandler(w http.ResponseWriter, r *http.Request) {
 
-	serialNo := r.URL.Query().Get("serialNo")
+	vars := mux.Vars(r)
+	serialNo := vars["serialNo"]
 	if serialNo == "" {
 		http.Error(w, "Meter ID is required", http.StatusBadRequest)
 		return
@@ -199,7 +201,8 @@ func UpdateMeterHandler(w http.ResponseWriter, r *http.Request) {
 
 func DeleteMeterHandler(w http.ResponseWriter, r *http.Request) {
 
-	serialNo := r.URL.Query().Get("serialNo")
+	vars := mux.Vars(r)
+	serialNo := vars["serialNo"]
 	if serialNo == "" {
 		http.Error(w, "Meter ID is required", http.StatusBadRequest)
 		return
