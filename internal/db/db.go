@@ -12,24 +12,6 @@ import (
 
 var DB *gorm.DB
 
-type Reading struct {
-	ID                     uint   `gorm:"primaryKey"`
-	MeterNumber            string `gorm:"uniqueIndex"`
-	Energy_At_Pole_kwh     float64
-	Energy_At_Consumer_kwh float64
-	Timestamp              time.Time
-}
-
-type UtilityCenter struct {
-	ID          uint   `gorm:"primaryKey"`
-	UtilityID   string `gorm:"uniqueIndex"`
-	Name        string
-	Region      string
-	City        string
-	Address     string
-	ContactInfo string
-}
-
 func InitDB() {
 	host := os.Getenv("DB_HOST")
 	user := os.Getenv("DB_USER")
@@ -55,11 +37,5 @@ func InitDB() {
 	}
 
 	log.Println("Database connection established successfully")
-
-	err = DB.AutoMigrate(&Reading{}, &UtilityCenter{})
-	if err != nil {
-		log.Fatal("Failed to run migrations:", err)
-	}
-
-	log.Println("Database migrations completed successfully")
 }
+

@@ -6,6 +6,7 @@ import (
 	"energy-monitoring-system/internal/utils"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
 
@@ -24,11 +25,11 @@ func UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if user.FullName == "" || user.PhoneNumber == "" || user.Password == "" {
+	if user.FullName == "" || user.PhoneNumber == "" || user.PasswordHash == "" {
 		http.Error(w, "All fields are required", http.StatusBadRequest)
 		return
 	}
-	if len(user.Password) < 6 {
+	if len(user.PasswordHash) < 6 {
 		http.Error(w, "Password must be at least 6 characters", http.StatusBadRequest)
 		return
 	}
@@ -39,12 +40,11 @@ func UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	user.ID = utils.IdGenerator()
 
-	if models.CheckId(user.ID) {
-		http.Error(w, "User ID already exists", http.StatusBadRequest)
-		return
+	for models.CheckUserId(user.ID) {
+		user.ID = utils.IdGenerator()
 	}
 
-	user.Password, err = utils.HashPassword(user.Password)
+	user.PasswordHash, err = utils.HashPassword(user.PasswordHash)
 	if err != nil {
 		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
 		return
@@ -73,9 +73,9 @@ func GetAllUserHandler(w http.ResponseWriter, r *http.Request) {
 func GetUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
-	userId := vars["id"]
-	if userId == "" {
-		http.Error(w, "User ID is required", http.StatusBadRequest)
+	userId, err := uuid.Parse(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid or missing user ID", http.StatusBadRequest)
 		return
 	}
 
@@ -109,9 +109,9 @@ func UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 func DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
-	userId := vars["id"]
-	if userId == "" {
-		http.Error(w, "User ID is required", http.StatusBadRequest)
+	userId, err := uuid.Parse(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid or missing user ID", http.StatusBadRequest)
 		return
 	}
 
@@ -138,7 +138,13 @@ func MeterRegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if models.CheckMeterSerialNo(meter.SerialNo) {
+	meter.ID = utils.IdGenerator()
+
+	for models.CheckMeterId(meter.ID) {
+		meter.ID = utils.IdGenerator()
+	}
+
+	if models.CheckMeterSerialNo(meter.MeterSerialNumber) {
 		http.Error(w, "Meter serial number already exists", http.StatusBadRequest)
 		return
 	}

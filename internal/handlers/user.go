@@ -34,7 +34,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := utils.VerifyPassword(creds.Password, user.Password); err != nil {
+	if err := utils.VerifyPassword(creds.Password, user.PasswordHash); err != nil {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}

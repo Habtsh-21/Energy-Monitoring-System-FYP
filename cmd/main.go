@@ -20,10 +20,7 @@ func main() {
 	log.Println("Environment variables loaded successfully")
 
 	db.InitDB()
-
-	if err := db.DB.AutoMigrate(&models.User{}, &models.Meter{}); err != nil {
-		log.Fatal("Failed to migrate models:", err)
-	}
+	db.Migrate(&models.User{}, &models.Meter{}, &models.Record{})
 
 	r := mux.NewRouter()
 	routes.RegisterRoutes(r)
