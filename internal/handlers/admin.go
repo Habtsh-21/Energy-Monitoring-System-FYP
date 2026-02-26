@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"energy-monitoring-system/internal/models"
+	"energy-monitoring-system/internal/utils"
 	"net/http"
 )
 
@@ -14,6 +15,7 @@ func AdminHomeHandler(w http.ResponseWriter, r *http.Request) {
 func UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	var user models.User
+    var err error
 
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -33,6 +35,19 @@ func UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Phone number already exists", http.StatusBadRequest)
 		return
 	}
+	user.ID = utils.IdGenerator()
+    
+	if models.CheckId(user.ID) {
+		http.Error(w, "User ID already exists", http.StatusBadRequest)
+		return
+	}
+
+	user.Password, err = utils.HashPassword(user.Password)
+	if err != nil {
+		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+		return
+	}
+	
 
 	if err := user.Create(); err != nil {
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)

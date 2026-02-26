@@ -67,3 +67,11 @@ func CheckPhoneNumber(phoneNumber string) bool {
 	}
 	return true
 }
+
+func CheckId(id uint) bool {
+	var user User
+	if err := db.DB.Where("ID = ?", id).First(&user).Error; err != nil {
+		return false
+	}
+	return true
+}

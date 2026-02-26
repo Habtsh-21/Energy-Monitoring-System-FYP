@@ -1,16 +1,16 @@
 package main
 
 import (
+	"energy-monitoring-system/internal/db"
+	"energy-monitoring-system/internal/models"
+	"energy-monitoring-system/internal/routes"
 	"log"
 	"net/http"
 	"os"
-	"energy-monitoring-system/internal/db"
-	"energy-monitoring-system/internal/models"
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 )
-
 
 func main() {
 
@@ -26,7 +26,7 @@ func main() {
 	}
 
 	r := mux.NewRouter()
-
+	routes.RegisterRoutes(r)
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
