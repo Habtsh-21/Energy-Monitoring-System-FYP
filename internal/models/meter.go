@@ -43,9 +43,9 @@ func(meter *Meter) Delete() error {
 	return nil
 }
 
-func GetMeter(meterId uint) (*Meter, error) {
+func GetMeter(serialNo string) (*Meter, error) {
 	var meter Meter
-	if err := db.DB.Where("ID = ?", meterId).First(&meter).Error; err != nil {
+	if err := db.DB.Where("SerialNo = ?", serialNo).First(&meter).Error; err != nil {
 		return nil, err
 	}
 	return &meter, nil
@@ -57,4 +57,12 @@ func GetAllMeter() ([]Meter, error) {
 		return nil, err
 	}
 	return meters, nil
+}
+
+func CheckMeterSerialNo(serialNo string) bool {
+	var meter Meter
+	if err := db.DB.Where("SerialNo = ?", serialNo).First(&meter).Error; err != nil {
+		return false
+	}
+	return true
 }

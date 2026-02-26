@@ -59,3 +59,11 @@ func GetAllUser() ([]User, error) {
 	}
 	return users, nil
 }
+
+func CheckPhoneNumber(phoneNumber string) bool {
+	var user User
+	if err := db.DB.Where("PhoneNumber = ?", phoneNumber).First(&user).Error; err != nil {
+		return false
+	}
+	return true
+}
