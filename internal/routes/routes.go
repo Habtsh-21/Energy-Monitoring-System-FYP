@@ -26,4 +26,5 @@ func RegisterRoutes(r *mux.Router) {
 	admin.HandleFunc("/meters", handlers.GetAllMeterHandler).Methods("GET")
 	admin.HandleFunc("/meter/{serialNo}", handlers.UpdateMeterHandler).Methods("PUT")
 	admin.HandleFunc("/meter/{serialNo}", handlers.DeleteMeterHandler).Methods("DELETE")
+	admin.HandleFunc("/records", handlers.GetAllRecordHandler).Methods("GET")
 }

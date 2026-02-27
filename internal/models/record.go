@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type Record struct {
@@ -22,9 +23,11 @@ type Record struct {
 	Meter *Meter `gorm:"foreignKey:MeterID;references:ID" json:"meter,omitempty"`
 }
 
-
-func (record *Record) Create() error {
-	if err := db.DB.Create(record).Error; err != nil {
+func (record *Record) Create(tx *gorm.DB) error {
+	if tx == nil {
+		tx = db.DB
+	}
+	if err := tx.Create(record).Error; err != nil {
 		return err
 	}
 	return nil

@@ -2,12 +2,15 @@ package handlers
 
 import (
 	"encoding/json"
+	"energy-monitoring-system/internal/db"
 	"energy-monitoring-system/internal/models"
 	"energy-monitoring-system/internal/utils"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"gorm.io/gorm"
 )
 
 func AdminHomeHandler(w http.ResponseWriter, r *http.Request) {
@@ -18,6 +21,7 @@ func AdminHomeHandler(w http.ResponseWriter, r *http.Request) {
 func UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	var user models.User
+	var record models.Record
 	var err error
 
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
@@ -38,6 +42,11 @@ func UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Phone number already exists", http.StatusBadRequest)
 		return
 	}
+	if models.CheckMeterSerialNo(user.AssignedMeterSerialNo) {
+		http.Error(w, "Meter serial number already Assigned", http.StatusBadRequest)
+		return
+	}
+
 	user.ID = utils.IdGenerator()
 
 	for models.CheckUserId(user.ID) {
@@ -46,17 +55,66 @@ func UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	user.PasswordHash, err = utils.HashPassword(user.PasswordHash)
 	if err != nil {
-		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+	user.CreatedAt = time.Now()
+	user.UpdatedAt = time.Now()
+	user.IsActive = true
 
-	if err := user.Create(); err != nil {
-		http.Error(w, "Failed to create user", http.StatusInternalServerError)
+	err = db.DB.Transaction(func(tx *gorm.DB) error {
+		if err := user.Create(tx); err != nil {
+			return err
+		}
+
+		meterID, err := models.GetMeterID(user.AssignedMeterSerialNo)
+		if err != nil {
+			return err
+		}
+
+		record = models.Record{
+			ID:         utils.IdGenerator(),
+			UserID:     user.ID,
+			MeterID:    meterID,
+			AssignedAt: time.Now(),
+			IsCurrent:  true,
+			AssignedBy: "admin",
+		}
+		record.BaseModel.CreatedAt = time.Now()
+		record.BaseModel.UpdatedAt = time.Now()
+
+		if err := record.Create(tx); err != nil {
+			return err
+		}
+         
+		if err = models.UpdateMeterStatus( tx ,meterID, "assigned"); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+
+	if err != nil {
+		http.Error(w, "Failed to register: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusCreated)
 }
+
+func GetAllRecordHandler(w http.ResponseWriter, r *http.Request) {
+
+	records, err := models.GetAllRecord()
+	if err != nil {
+		http.Error(w, "Failed to get records", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(records)
+}
+
 
 func GetAllUserHandler(w http.ResponseWriter, r *http.Request) {
 
@@ -139,10 +197,7 @@ func MeterRegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	meter.ID = utils.IdGenerator()
-
-	for models.CheckMeterId(meter.ID) {
-		meter.ID = utils.IdGenerator()
-	}
+	meter.CreatedAt = time.Now()
 
 	if models.CheckMeterSerialNo(meter.MeterSerialNumber) {
 		http.Error(w, "Meter serial number already exists", http.StatusBadRequest)

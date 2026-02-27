@@ -3,16 +3,17 @@ package models
 import (
 	"energy-monitoring-system/internal/db"
 	"time"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 type Address struct {
-	Region      string
-	City        string
-	SubCity     string
-	Kebele      string
-	HouseNumber string
+	Region      string `json:"region"`
+	City        string `json:"city"`
+	SubCity     string `json:"sub_city"`
+	Kebele      string `json:"kebele"`
+	HouseNumber string `json:"house_number"`
 }
 type BaseModel struct {
 	ID        uuid.UUID      `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
@@ -22,25 +23,26 @@ type BaseModel struct {
 }
 
 type User struct {
-    BaseModel
-    
-    PasswordHash  string    `gorm:"column:password_hash;not null" json:"-"`
-    FullName      string    `gorm:"column:full_name;size:255;not null" json:"full_name" validate:"required"`
-    PhoneNumber   string    `gorm:"column:phone_number;size:20" json:"phone_number"`
-    Address       Address `gorm:"embedded" json:"address"`
-    LastLogin     *time.Time `gorm:"column:last_login" json:"last_login"`
-    IsActive      bool      `gorm:"default:true" json:"is_active"`
-	
-    CurrentMeterID *uuid.UUID `gorm:"type:uuid;uniqueIndex" json:"current_meter_id"`
-    CurrentMeter   *Meter     `gorm:"foreignKey:CurrentMeterID" json:"current_meter,omitempty"`
+	BaseModel
 
-    Record []Record `gorm:"foreignKey:UserID" json:"meter_assignments,omitempty"`
+	PasswordHash string     `gorm:"column:password_hash;not null" json:"password"`
+	FullName     string     `gorm:"column:full_name;size:255;not null" json:"full_name" validate:"required"`
+	PhoneNumber  string     `gorm:"column:phone_number;size:20" json:"phone_number"`
+	Address      Address    `gorm:"embedded" json:"address"`
+	LastLogin    *time.Time `gorm:"column:last_login" json:"last_login"`
+	IsActive     bool       `gorm:"default:true" json:"is_active"`
 
+	AssignedMeterSerialNo string `gorm:"column:assigned_meter_serial_no;uniqueIndex" json:"assigned_meter_serial_no"`
+
+	CurrentMeter *Meter   `gorm:"foreignKey:AssignedMeterSerialNo;references:MeterSerialNumber" json:"current_meter,omitempty"`
+	Record       []Record `gorm:"foreignKey:UserID" json:"meter_assignments,omitempty"`
 }
 
-
-func (user *User) Create() error {
-	if err := db.DB.Create(user).Error; err != nil {
+func (user *User) Create(tx *gorm.DB) error {
+	if tx == nil {
+		tx = db.DB
+	}
+	if err := tx.Create(user).Error; err != nil {
 		return err
 	}
 	return nil
@@ -78,7 +80,7 @@ func GetAllUser() ([]User, error) {
 
 func CheckPhoneNumber(phoneNumber string) bool {
 	var user User
-	if err := db.DB.Where("PhoneNumber = ?", phoneNumber).First(&user).Error; err != nil {
+	if err := db.DB.Where("phone_number = ?", phoneNumber).First(&user).Error; err != nil {
 		return false
 	}
 	return true
@@ -86,7 +88,7 @@ func CheckPhoneNumber(phoneNumber string) bool {
 
 func CheckUserId(id uuid.UUID) bool {
 	var user User
-	if err := db.DB.Where("ID = ?", id).First(&user).Error; err != nil {
+	if err := db.DB.Where("id = ?", id).First(&user).Error; err != nil {
 		return false
 	}
 	return true
