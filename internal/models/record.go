@@ -10,7 +10,6 @@ import (
 
 type Record struct {
 	BaseModel
-	ID                uuid.UUID  `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
 	UserID            uuid.UUID  `gorm:"type:uuid;index" json:"user_id"`
 	MeterID           uuid.UUID  `gorm:"type:uuid;index" json:"meter_id"`
 	AssignedAt        time.Time  `gorm:"column:assigned_at" json:"assigned_at"`
@@ -19,8 +18,8 @@ type Record struct {
 	IsCurrent         bool       `gorm:"column:is_current" json:"is_current"`
 	TerminationReason string     `gorm:"column:termination_reason" json:"termination_reason"`
 
-	User  *User  `gorm:"foreignKey:UserID;references:ID" json:"user,omitempty"`
-	Meter *Meter `gorm:"foreignKey:MeterID;references:ID" json:"meter,omitempty"`
+	User  *User  `gorm:"foreignKey:UserID;references:ID;" json:"user,omitempty"`
+	Meter *Meter `gorm:"foreignKey:MeterID;references:ID;" json:"meter,omitempty"`
 }
 
 func (record *Record) Create(tx *gorm.DB) error {
