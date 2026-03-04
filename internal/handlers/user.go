@@ -14,7 +14,6 @@ func UserHomeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Welcome to Energy Monitoring System"))
 }
 
-
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	var user models.User
@@ -34,7 +33,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := utils.VerifyPassword(creds.Password, user.PasswordHash); err != nil {
+	if err := utils.VerifyPassword(creds.Password, user.Password); err != nil {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -49,3 +48,6 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"token": token})
 
 }
+
+
+
