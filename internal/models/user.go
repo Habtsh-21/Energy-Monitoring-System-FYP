@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Address struct {
@@ -25,24 +26,24 @@ type BaseModel struct {
 type User struct {
 	BaseModel
 
-	PasswordHash string     `gorm:"column:password_hash;not null" json:"password"`
-	FullName     string     `gorm:"column:full_name;size:255;not null" json:"full_name" validate:"required"`
-	PhoneNumber  string     `gorm:"column:phone_number;size:20" json:"phone_number"`
-	Address      Address    `gorm:"embedded" json:"address"`
-	LastLogin    *time.Time `gorm:"column:last_login" json:"last_login"`
-	IsActive     bool       `gorm:"default:true" json:"is_active"`
+	Password    string     `gorm:"column:password;not null" json:"password"`
+	FullName    string     `gorm:"column:full_name;size:255;not null" json:"full_name" validate:"required"`
+	PhoneNumber string     `gorm:"column:phone_number;size:20;uniqueIndex:idx_phone_number,where:deleted_at IS NULL" json:"phone_number"`
+	Address     Address    `gorm:"embedded" json:"address"`
+	LastLogin   *time.Time `gorm:"column:last_login" json:"last_login"`
+	IsActive    bool       `gorm:"default:true" json:"is_active"`
 
-	AssignedMeterSerialNo string `gorm:"column:assigned_meter_serial_no;uniqueIndex" json:"assigned_meter_serial_no"`
+	MeterID uuid.UUID `gorm:"column:meter_id;type:uuid;uniqueIndex:idx_meter_id,where:deleted_at IS NULL" json:"meter_id"`
 
-	CurrentMeter *Meter   `gorm:"foreignKey:AssignedMeterSerialNo;references:MeterSerialNumber" json:"current_meter,omitempty"`
-	Record       []Record `gorm:"foreignKey:UserID" json:"meter_assignments,omitempty"`
+	Meter  Meter    `gorm:"foreignKey:MeterID;references:ID;" json:"meter"`
+	Record []Record `gorm:"foreignKey:UserID;references:ID;" json:"records,omitempty"`
 }
 
 func (user *User) Create(tx *gorm.DB) error {
 	if tx == nil {
 		tx = db.DB
 	}
-	if err := tx.Create(user).Error; err != nil {
+	if err := tx.Omit(clause.Associations).Create(user).Error; err != nil {
 		return err
 	}
 	return nil
@@ -64,7 +65,7 @@ func (user *User) Delete() error {
 
 func GetUser(userId uuid.UUID) (*User, error) {
 	var user User
-	if err := db.DB.Where("ID = ?", userId).First(&user).Error; err != nil {
+	if err := db.DB.Preload("Meter").Where("ID = ?", userId).First(&user).Error; err != nil {
 		return nil, err
 	}
 	return &user, nil
@@ -72,7 +73,15 @@ func GetUser(userId uuid.UUID) (*User, error) {
 
 func GetAllUser() ([]User, error) {
 	var users []User
-	if err := db.DB.Find(&users).Error; err != nil {
+	if err := db.DB.Preload("Meter").Find(&users).Error; err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+func GetAllUserWithDeleted() ([]User, error) {
+	var users []User
+	if err := db.DB.Unscoped().Find(&users).Error; err != nil {
 		return nil, err
 	}
 	return users, nil
@@ -92,4 +101,31 @@ func CheckUserId(id uuid.UUID) bool {
 		return false
 	}
 	return true
+}
+
+func CheckMeterAssignment(meterID string) bool {
+	var user User
+	if err := db.DB.Where("meter_id = ?", meterID).First(&user).Error; err != nil {
+		return false
+	}
+	return true
+}
+
+func PermanentUserDelete(userId uuid.UUID) error {
+	var user User
+	if err := db.DB.Where("id = ?", userId).First(&user).Error; err != nil {
+		return err
+	}
+	if err := db.DB.Unscoped().Delete(&user).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
+func PermanentUsersDelete() error {
+	var users []User
+	if err := db.DB.Unscoped().Delete(&users).Error; err != nil {
+		return err
+	}
+	return nil
 }
