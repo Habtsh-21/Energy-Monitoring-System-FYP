@@ -14,9 +14,9 @@ type Meter struct {
 	Manufacturer      string `gorm:"size:100" json:"manufacturer"`
 	Model             string `gorm:"size:100" json:"model"`
 	FirmwareVersion   string `gorm:"column:firmware_version;size:50" json:"firmware_version"`
-	Status            string `gorm:"size:20;default:'available';index" json:"status"` // available, assigned, maintenance, retired
+	IsAvailable       bool   `gorm:"default:true;index" json:"is_available"`
 
-	Record []Record `gorm:"foreignKey:MeterID" json:"record,omitempty"`
+	Record []Record `gorm:"foreignKey:MeterID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"record,omitempty"`
 }
 
 func (meter *Meter) Create() error {
@@ -40,7 +40,7 @@ func (meter *Meter) Delete() error {
 	return nil
 }
 
-func GetMeter(serialNo string) (*Meter, error) {
+func GetMeterBySerialNo(serialNo string) (*Meter, error) {
 	var meter Meter
 	if err := db.DB.Where("meter_serial_number = ?", serialNo).First(&meter).Error; err != nil {
 		return nil, err
@@ -48,7 +48,15 @@ func GetMeter(serialNo string) (*Meter, error) {
 	return &meter, nil
 }
 
-func GetMeterID(serialNo string) (uuid.UUID, error) {
+func GetMeterByID(id uuid.UUID) (*Meter, error) {
+	var meter Meter
+	if err := db.DB.Where("ID = ?", id).First(&meter).Error; err != nil {
+		return nil, err
+	}
+	return &meter, nil
+}
+
+func GetMeterIDBySerialNo(serialNo string) (uuid.UUID, error) {
 	var meter Meter
 	if err := db.DB.Where("meter_serial_number = ?", serialNo).First(&meter).Error; err != nil {
 		return uuid.Nil, err
@@ -64,32 +72,61 @@ func GetAllMeter() ([]Meter, error) {
 	return meters, nil
 }
 
-func CheckMeterSerialNo(serialNo string) bool {
+func GetAllMeterWithDeleted() ([]Meter, error) {
+	var meters []Meter
+	if err := db.DB.Unscoped().Find(&meters).Error; err != nil {
+		return nil, err
+	}
+	return meters, nil
+}
+
+func CheckSerialNo(serialNo string) bool {
 	var meter Meter
 	if err := db.DB.Where("meter_serial_number = ?", serialNo).First(&meter).Error; err != nil {
 		return false
 	}
 	return true
 }
-
-func CheckMeterId(id uuid.UUID) bool {
+func CheckAvailability(meterID uuid.UUID) (bool, error) {
 	var meter Meter
-	if err := db.DB.Where("ID = ?", id).First(&meter).Error; err != nil {
-		return false
+	if err := db.DB.Where("id = ?", meterID).First(&meter).Error; err != nil {
+		return false, err
 	}
-	return true
+	if meter.IsAvailable == false {
+		return false, nil
+	}
+	return true, nil
 }
 
-func UpdateMeterStatus(tx *gorm.DB, id uuid.UUID, status string) error {
+func UpdateMeterStatus(tx *gorm.DB, id uuid.UUID, available bool) error {
 	if tx == nil {
 		tx = db.DB
 	}
 
 	if err := tx.Model(&Meter{}).
 		Where("id = ?", id).
-		Update("status", status).Error; err != nil {
+		Update("is_available", available).Error; err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func PermanentMeterDelete(meterID uuid.UUID) error {
+	var meter Meter
+	if err := db.DB.Where("id = ?", meterID).First(&meter).Error; err != nil {
+		return err
+	}
+	if err := db.DB.Unscoped().Delete(&meter).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
+func PermanentMetersDelete() error {
+	var meters []Meter
+	if err := db.DB.Unscoped().Delete(&meters).Error; err != nil {
+		return err
+	}
 	return nil
 }
