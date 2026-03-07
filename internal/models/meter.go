@@ -33,6 +33,16 @@ func (meter *Meter) Update() error {
 	return nil
 }
 
+func UpdateMeterParameters(tx *gorm.DB, meterID uuid.UUID, updates map[string]any) error {
+	if tx == nil {
+		tx = db.DB
+	}
+	if err := tx.Model(&Meter{}).Where("id = ?", meterID).Updates(updates).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
 func (meter *Meter) Delete() error {
 	if err := db.DB.Delete(meter).Error; err != nil {
 		return err
