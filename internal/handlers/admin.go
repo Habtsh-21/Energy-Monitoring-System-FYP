@@ -13,12 +13,18 @@ import (
 	"gorm.io/gorm"
 )
 
-func AdminHomeHandler(w http.ResponseWriter, r *http.Request) {
+type AdminHandler struct{}
+
+func NewAdminHandler() *AdminHandler {
+	return &AdminHandler{}
+}
+
+func (h *AdminHandler) AdminHomeHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Welcome to Energy Monitoring System"))
 }
 
-func UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
+func (h *AdminHandler) UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	var user models.User
 	var record models.Record
@@ -97,31 +103,7 @@ func UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
-func GetDeletedUserHandler(w http.ResponseWriter, r *http.Request) {
-
-	users, err := models.GetAllUserWithDeleted()
-	if err != nil {
-		http.Error(w, "Failed to get users", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(users)
-}
-
-func GetAllRecordHandler(w http.ResponseWriter, r *http.Request) {
-
-	records, err := models.GetAllRecord()
-	if err != nil {
-		http.Error(w, "Failed to get records", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(records)
-}
-
-func GetAllUserHandler(w http.ResponseWriter, r *http.Request) {
+func (h *AdminHandler) GetAllUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	users, err := models.GetAllUser()
 	if err != nil {
@@ -133,7 +115,8 @@ func GetAllUserHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(users)
 }
 
-func GetUserHandler(w http.ResponseWriter, r *http.Request) {
+
+func (h *AdminHandler) GetUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	userId, err := uuid.Parse(vars["id"])
@@ -152,24 +135,36 @@ func GetUserHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 
-func UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 
-	var user models.User
+func (h *AdminHandler) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
+    vars := mux.Vars(r)
+    userId, err := uuid.Parse(vars["userId"])
+    if err != nil {
+        http.Error(w, "Invalid user ID", http.StatusBadRequest)
+        return
+    }
+    
+    var updates map[string]any
+    if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+        http.Error(w, "Invalid request body", http.StatusBadRequest)
+        return
+    }
+     updates["updated_at"] = time.Now()
+    if len(updates) == 0 {
+        http.Error(w, "No fields to update", http.StatusBadRequest)
+        return
+    }
 
-	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
+    if err := models.UpdateUserParameters(db.DB, userId, updates); err != nil {
+        http.Error(w, "Failed to update user", http.StatusInternalServerError)
+        return
+    }
 
-	if err := user.Update(); err != nil {
-		http.Error(w, "Failed to update user", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
+    w.WriteHeader(http.StatusOK)
 }
 
-func DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
+
+func (h *AdminHandler) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	userId, err := uuid.Parse(vars["id"])
@@ -177,34 +172,35 @@ func DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid or missing user ID", http.StatusBadRequest)
 		return
 	}
-
+   err = db.DB.Transaction(func(tx *gorm.DB) error {
 	user, err := models.GetUser(userId)
 	if err != nil {
-		http.Error(w, "Failed to get user", http.StatusInternalServerError)
-		return
+		return err
 	}
 
-	var currentAssignments int64
-	if err := db.DB.Model(&models.Record{}).
-		Where("user_id = ? AND is_current = ?", user.ID, true).
-		Count(&currentAssignments).Error; err != nil {
-		http.Error(w, "Failed to check user assignments", http.StatusInternalServerError)
-		return
-	}
-	if currentAssignments > 0 {
-		http.Error(w, "User has an active meter assignment. Unassign meter first.", http.StatusConflict)
-		return
-	}
+    if err := models.UpdateUserParameters(tx, userId, map[string]any{"is_active": false}); err != nil {
+        return err
+    }
 
-	if err := user.Delete(); err != nil {
-		http.Error(w, "Failed to delete user", http.StatusInternalServerError)
-		return
-	}
+    if err := models.UpdateMeterParameters(tx, user.MeterID, map[string]any{"is_available": true}); err != nil {
+        return err
+    }
+    if err := user.Delete(tx); err != nil {
+        return err
+    }
+
+    return nil
+})
+if err != nil {
+    http.Error(w, "Failed to process request", http.StatusInternalServerError)
+    return
+}
 
 	w.WriteHeader(http.StatusOK)
 }
 
-func PermanentDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
+
+func (h *AdminHandler) PermanentDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	userId, err := uuid.Parse(vars["id"])
@@ -221,17 +217,13 @@ func PermanentDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func PermanentDeleteAllUserHandler(w http.ResponseWriter, r *http.Request) {
 
-	if err := models.PermanentUsersDelete(); err != nil {
-		http.Error(w, "Failed to delete users", http.StatusInternalServerError)
-		return
-	}
 
-	w.WriteHeader(http.StatusOK)
-}
 
-func MeterRegisterHandler(w http.ResponseWriter, r *http.Request) {
+
+
+
+func (h *AdminHandler) MeterRegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	var meter models.Meter
 
@@ -262,7 +254,7 @@ func MeterRegisterHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func GetAllMeterHandler(w http.ResponseWriter, r *http.Request) {
+func (h *AdminHandler) GetAllMeterHandler(w http.ResponseWriter, r *http.Request) {
 
 	meters, err := models.GetAllMeter()
 	if err != nil {
@@ -274,7 +266,7 @@ func GetAllMeterHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(meters)
 }
 
-func GetMeterHandler(w http.ResponseWriter, r *http.Request) {
+func (h *AdminHandler) GetMeterHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	meterID := vars["id"]
@@ -293,7 +285,7 @@ func GetMeterHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(meter)
 }
 
-func GetDeletedMeterHandler(w http.ResponseWriter, r *http.Request) {
+func (h *AdminHandler) GetDeletedMeterHandler(w http.ResponseWriter, r *http.Request) {
 
 	meters, err := models.GetAllMeterWithDeleted()
 	if err != nil {
@@ -305,7 +297,7 @@ func GetDeletedMeterHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(meters)
 }
 
-func UpdateMeterHandler(w http.ResponseWriter, r *http.Request) {
+func (h *AdminHandler) UpdateMeterHandler(w http.ResponseWriter, r *http.Request) {
 
 	var meter models.Meter
 
@@ -322,7 +314,7 @@ func UpdateMeterHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func DeleteMeterHandler(w http.ResponseWriter, r *http.Request) {
+func (h *AdminHandler) DeleteMeterHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	meterID := vars["id"]
@@ -369,7 +361,7 @@ func DeleteMeterHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func PermanentDeleteMeterHandler(w http.ResponseWriter, r *http.Request) {
+func (h *AdminHandler) PermanentDeleteMeterHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	meterID := vars["id"]
@@ -392,7 +384,7 @@ func PermanentDeleteMeterHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func PermanentDeleteAllMeterHandler(w http.ResponseWriter, r *http.Request) {
+func (h *AdminHandler) PermanentDeleteAllMeterHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := models.PermanentMetersDelete(); err != nil {
 		http.Error(w, "Failed to delete meters", http.StatusInternalServerError)
@@ -400,4 +392,17 @@ func PermanentDeleteAllMeterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+
+func (h *AdminHandler) GetllRecordHandler(w http.ResponseWriter, r *http.Request) {
+
+	records, err := models.GetAllRecord()
+	if err != nil {
+		http.Error(w, "Failed to get records", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(records)
 }
