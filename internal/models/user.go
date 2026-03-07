@@ -56,8 +56,19 @@ func (user *User) Update() error {
 	return nil
 }
 
-func (user *User) Delete() error {
-	if err := db.DB.Delete(user).Error; err != nil {
+
+func UpdateUserParameters(tx *gorm.DB, userId uuid.UUID, updates map[string]any) error {
+	if err := tx.Model(&User{}).Where("id = ?", userId).Updates(updates).Error; err != nil {
+		return err
+	}	
+	return nil
+}
+
+func (user *User) Delete(tx *gorm.DB) error {
+	if tx == nil {
+		tx = db.DB
+	}
+	if err := tx.Delete(user).Error; err != nil {
 		return err
 	}
 	return nil
