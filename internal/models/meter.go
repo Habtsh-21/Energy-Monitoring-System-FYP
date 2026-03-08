@@ -16,7 +16,7 @@ type Meter struct {
 	FirmwareVersion   string `gorm:"column:firmware_version;size:50" json:"firmware_version"`
 	IsAvailable       bool   `gorm:"default:true;index" json:"is_available"`
 
-	Record []Record `gorm:"foreignKey:MeterID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"record,omitempty"`
+	Record []Record `gorm:"foreignKey:MeterID;" json:"record,omitempty"`
 }
 
 func (meter *Meter) Create() error {
@@ -97,7 +97,8 @@ func CheckSerialNo(serialNo string) bool {
 	}
 	return true
 }
-func CheckAvailability(meterID uuid.UUID) (bool, error) {
+
+func IsMeterAvailable(meterID uuid.UUID) (bool, error) {
 	var meter Meter
 	if err := db.DB.Where("id = ?", meterID).First(&meter).Error; err != nil {
 		return false, err
@@ -108,19 +109,6 @@ func CheckAvailability(meterID uuid.UUID) (bool, error) {
 	return true, nil
 }
 
-func UpdateMeterStatus(tx *gorm.DB, id uuid.UUID, available bool) error {
-	if tx == nil {
-		tx = db.DB
-	}
-
-	if err := tx.Model(&Meter{}).
-		Where("id = ?", id).
-		Update("is_available", available).Error; err != nil {
-		return err
-	}
-
-	return nil
-}
 
 func PermanentMeterDelete(meterID uuid.UUID) error {
 	var meter Meter

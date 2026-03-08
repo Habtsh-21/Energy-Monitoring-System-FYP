@@ -18,8 +18,8 @@ type Record struct {
 	IsCurrent         bool       `gorm:"column:is_current" json:"is_current"`
 	TerminationReason string     `gorm:"column:termination_reason" json:"termination_reason"`
 
-	User  *User  `gorm:"foreignKey:UserID;references:ID;" json:"user,omitempty"`
-	Meter *Meter `gorm:"foreignKey:MeterID;references:ID;" json:"meter,omitempty"`
+	User  *User  `gorm:"foreignKey:UserID;" json:"user,omitempty"`
+	Meter *Meter `gorm:"foreignKey:MeterID;" json:"meter,omitempty"`
 }
 
 func (record *Record) Create(tx *gorm.DB) error {

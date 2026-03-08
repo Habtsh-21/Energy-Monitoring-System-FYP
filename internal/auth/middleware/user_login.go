@@ -7,7 +7,10 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
+
+
 
 type contextKey string
 
@@ -20,27 +23,35 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Authorization header required", http.StatusUnauthorized)
 			return
 		}
-
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			http.Error(w, "Invalid authorization header", http.StatusUnauthorized)
+			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
 			return
 		}
 
-		tokenString := parts[1]
-		token, err := auth.ValidateJWT(tokenString)
+		token, err := auth.ValidateJWT(parts[1])
 		if err != nil || !token.Valid {
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 			return
 		}
-
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
 			http.Error(w, "Invalid token claims", http.StatusUnauthorized)
 			return
 		}
 
-		userID := claims["user_id"]
+		userIDStr, ok := claims["user_id"].(string)
+		if !ok {
+			http.Error(w, "Invalid user ID in token", http.StatusUnauthorized)
+			return
+		}
+
+		userID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			http.Error(w, "Invalid user ID format", http.StatusUnauthorized)
+			return
+		}
+
 		ctx := context.WithValue(r.Context(), UserIDKey, userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

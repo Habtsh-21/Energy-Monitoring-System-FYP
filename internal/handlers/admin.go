@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"energy-monitoring-system/internal/db"
 	"energy-monitoring-system/internal/models"
-	"energy-monitoring-system/internal/utils"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -45,13 +45,14 @@ func (h *AdminHandler) UserRegisterHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	user.Password, err = utils.HashPassword(user.Password)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-
-	available, err := models.CheckAvailability(user.MeterID)
+	user.Password = string(hashedPassword)
+		
+	isAvailable, err := models.IsMeterAvailable(user.MeterID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			http.Error(w, "Meter does not exist", http.StatusBadRequest)
@@ -60,7 +61,7 @@ func (h *AdminHandler) UserRegisterHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Error checking meter availability: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if !available {
+	if !isAvailable {
 		http.Error(w, "Meter is not available for assignment", http.StatusBadRequest)
 		return
 	}
@@ -88,7 +89,7 @@ func (h *AdminHandler) UserRegisterHandler(w http.ResponseWriter, r *http.Reques
 			return err
 		}
 
-		if err = models.UpdateMeterStatus(tx, user.MeterID, false); err != nil {
+		if err = models.UpdateMeterParameters(tx, user.MeterID, map[string]any{"is_available": false}); err != nil {
 			return err
 		}
 
@@ -115,7 +116,6 @@ func (h *AdminHandler) GetAllUserHandler(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(users)
 }
 
-
 func (h *AdminHandler) GetUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
@@ -135,34 +135,32 @@ func (h *AdminHandler) GetUserHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 
-
 func (h *AdminHandler) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
-    vars := mux.Vars(r)
-    userId, err := uuid.Parse(vars["userId"])
-    if err != nil {
-        http.Error(w, "Invalid user ID", http.StatusBadRequest)
-        return
-    }
-    
-    var updates map[string]any
-    if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
-        http.Error(w, "Invalid request body", http.StatusBadRequest)
-        return
-    }
-     updates["updated_at"] = time.Now()
-    if len(updates) == 0 {
-        http.Error(w, "No fields to update", http.StatusBadRequest)
-        return
-    }
+	vars := mux.Vars(r)
+	userId, err := uuid.Parse(vars["userId"])
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
 
-    if err := models.UpdateUserParameters(db.DB, userId, updates); err != nil {
-        http.Error(w, "Failed to update user", http.StatusInternalServerError)
-        return
-    }
+	var updates map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	updates["updated_at"] = time.Now()
+	if len(updates) == 0 {
+		http.Error(w, "No fields to update", http.StatusBadRequest)
+		return
+	}
 
-    w.WriteHeader(http.StatusOK)
+	if err := models.UpdateUserParameters(db.DB, userId, updates); err != nil {
+		http.Error(w, "Failed to update user", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
-
 
 func (h *AdminHandler) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 
@@ -172,33 +170,32 @@ func (h *AdminHandler) DeleteUserHandler(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Invalid or missing user ID", http.StatusBadRequest)
 		return
 	}
-   err = db.DB.Transaction(func(tx *gorm.DB) error {
-	user, err := models.GetUser(userId)
+	err = db.DB.Transaction(func(tx *gorm.DB) error {
+		user, err := models.GetUser(userId)
+		if err != nil {
+			return err
+		}
+
+		if err := models.UpdateUserParameters(tx, userId, map[string]any{"is_active": false}); err != nil {
+			return err
+		}
+
+		if err := models.UpdateMeterParameters(tx, user.MeterID, map[string]any{"is_available": true}); err != nil {
+			return err
+		}
+		if err := user.Delete(tx); err != nil {
+			return err
+		}
+
+		return nil
+	})
 	if err != nil {
-		return err
+		http.Error(w, "Failed to process request", http.StatusInternalServerError)
+		return
 	}
-
-    if err := models.UpdateUserParameters(tx, userId, map[string]any{"is_active": false}); err != nil {
-        return err
-    }
-
-    if err := models.UpdateMeterParameters(tx, user.MeterID, map[string]any{"is_available": true}); err != nil {
-        return err
-    }
-    if err := user.Delete(tx); err != nil {
-        return err
-    }
-
-    return nil
-})
-if err != nil {
-    http.Error(w, "Failed to process request", http.StatusInternalServerError)
-    return
-}
 
 	w.WriteHeader(http.StatusOK)
 }
-
 
 func (h *AdminHandler) PermanentDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 
@@ -217,12 +214,6 @@ func (h *AdminHandler) PermanentDeleteUserHandler(w http.ResponseWriter, r *http
 	w.WriteHeader(http.StatusOK)
 }
 
-
-
-
-
-
-
 func (h *AdminHandler) MeterRegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	var meter models.Meter
@@ -232,12 +223,10 @@ func (h *AdminHandler) MeterRegisterHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if meter.MeterSerialNumber == "" || meter.MeterType == "" || meter.Manufacturer == "" {
+	if meter.MeterSerialNumber == "" || meter.MeterType == "" {
 		http.Error(w, "Incomplete meter information", http.StatusBadRequest)
 		return
 	}
-
-	meter.ID = utils.IdGenerator()
 	meter.CreatedAt = time.Now()
 	meter.UpdatedAt = time.Now()
 
@@ -329,30 +318,6 @@ func (h *AdminHandler) DeleteMeterHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var assignedUsers int64
-	if err := db.DB.Model(&models.User{}).
-		Where("meter_id = ?", meter.MeterSerialNumber).
-		Count(&assignedUsers).Error; err != nil {
-		http.Error(w, "Failed to check meter assignments", http.StatusInternalServerError)
-		return
-	}
-	if assignedUsers > 0 {
-		http.Error(w, "Meter is assigned to a user. Unassign meter first.", http.StatusConflict)
-		return
-	}
-
-	var linkedRecords int64
-	if err := db.DB.Model(&models.Record{}).
-		Where("meter_id = ?", meter.ID).
-		Count(&linkedRecords).Error; err != nil {
-		http.Error(w, "Failed to check meter records", http.StatusInternalServerError)
-		return
-	}
-	if linkedRecords > 0 {
-		http.Error(w, "Meter has assignment history and cannot be deleted.", http.StatusConflict)
-		return
-	}
-
 	if err := meter.Delete(); err != nil {
 		http.Error(w, "Failed to delete meter", http.StatusInternalServerError)
 		return
@@ -393,7 +358,6 @@ func (h *AdminHandler) PermanentDeleteAllMeterHandler(w http.ResponseWriter, r *
 
 	w.WriteHeader(http.StatusOK)
 }
-
 
 func (h *AdminHandler) GetllRecordHandler(w http.ResponseWriter, r *http.Request) {
 
