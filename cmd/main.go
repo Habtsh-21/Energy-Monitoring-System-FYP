@@ -20,7 +20,7 @@ func main() {
 	log.Println("Environment variables loaded successfully")
 
 	db.InitDB()
-	db.Migrate(&models.User{}, &models.Meter{}, &models.Record{})
+	db.Migrate(&models.User{}, &models.Meter{}, &models.Record{}, &models.MeterReading{})
 
 	r := mux.NewRouter()
 	routes.RegisterRoutes(r)
