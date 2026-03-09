@@ -122,10 +122,10 @@ func MeterReadingHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(reading)
 }
 
- func GetMeterReadingsHandler(w http.ResponseWriter, r *http.Request) {
+ func GetMeterReadingHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
-	meterId, err := uuid.Parse(vars["meterId"])
+	meterId, err := uuid.Parse(vars["id"])
 	if err != nil {
 		http.Error(w, "Invalid meter ID", http.StatusBadRequest)
 		return
@@ -149,7 +149,7 @@ func MeterReadingHandler(w http.ResponseWriter, r *http.Request) {
 func GetUserReadingHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
-	userId, err := uuid.Parse(vars["userId"])
+	userId, err := uuid.Parse(vars["id"])
 	if err != nil {
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
