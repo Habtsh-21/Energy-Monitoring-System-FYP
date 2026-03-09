@@ -8,7 +8,7 @@ import (
 )
 
 func RegisterRoutes(r *mux.Router) {
-
+	
 	user := r.PathPrefix("/user").Subrouter()
 	user.Use(middleware.AuthMiddleware)
 	user.HandleFunc("/", handlers.UserHomeHandler).Methods("GET")
@@ -24,9 +24,12 @@ func RegisterRoutes(r *mux.Router) {
 	admin.HandleFunc("/user/{id}", adminHandler.UpdateUserHandler).Methods("PUT")
 	admin.HandleFunc("/user/{id}", adminHandler.DeleteUserHandler).Methods("DELETE")
 	admin.HandleFunc("/meter", adminHandler.MeterRegisterHandler).Methods("POST")
-	admin.HandleFunc("/meter/{serialNo}", adminHandler.GetMeterHandler).Methods("GET")
-	admin.HandleFunc("/meter/{serialNo}", adminHandler.UpdateMeterHandler).Methods("PUT")
+	admin.HandleFunc("/meter/{id}", adminHandler.GetMeterHandler).Methods("GET")
+	admin.HandleFunc("/meter/{id}", adminHandler.UpdateMeterHandler).Methods("PUT")
 	admin.HandleFunc("/meters", adminHandler.GetAllMeterHandler).Methods("GET")
-	admin.HandleFunc("/meter/{serialNo}", adminHandler.DeleteMeterHandler).Methods("DELETE")
+	admin.HandleFunc("/meter/{id}", adminHandler.DeleteMeterHandler).Methods("DELETE")
 	admin.HandleFunc("/records", adminHandler.GetllRecordHandler).Methods("GET")
+
+	r.HandleFunc("/meter/reading", handlers.MeterReadingHandler).Methods("POST")
+
 }

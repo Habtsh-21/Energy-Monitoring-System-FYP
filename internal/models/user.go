@@ -94,6 +94,14 @@ func GetUserByPhone(tx *gorm.DB, phone string) (*User, error) {
     return &user, err
 }
 
+func GetUserIdByMeterId(meterId uuid.UUID) (uuid.UUID, error) {
+	var user User
+	if err := db.DB.Where("meter_id = ? AND is_active = ?", meterId, true).First(&user).Error; err != nil {
+		return uuid.Nil, err
+	}
+	return user.ID, nil
+}
+
 func GetAllUser() ([]User, error) {
 	var users []User
 	if err := db.DB.Preload("Meter").Find(&users).Error; err != nil {
@@ -101,6 +109,7 @@ func GetAllUser() ([]User, error) {
 	}
 	return users, nil
 }
+
 
 func GetAllUserWithDeleted() ([]User, error) {
 	var users []User
