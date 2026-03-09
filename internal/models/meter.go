@@ -17,6 +17,7 @@ type Meter struct {
 	IsAvailable       bool   `gorm:"default:true;index" json:"is_available"`
 
 	Record []Record `gorm:"foreignKey:MeterID;" json:"record,omitempty"`
+	Reading []MeterReading `gorm:"foreignKey:MeterID;" json:"reading,omitempty"`
 }
 
 func (meter *Meter) Create() error {

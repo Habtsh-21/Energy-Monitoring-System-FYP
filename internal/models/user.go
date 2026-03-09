@@ -37,6 +37,9 @@ type User struct {
 
     Meter  *Meter   `gorm:"foreignKey:MeterID" json:"meter,omitempty"`
     Record []Record `gorm:"foreignKey:UserID" json:"records,omitempty"`
+	Reading []MeterReading `gorm:"foreignKey:UserID" json:"readings,omitempty"`
+
+
 }
 
 
