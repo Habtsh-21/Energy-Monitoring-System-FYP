@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"energy-monitoring-system/internal/models"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,10 +16,34 @@ import (
 
 type MeterReadingRequest struct {
 	MeterSerialNumber string  `json:"meter_serial_number"`
-	ReadingKWh        float64 `json:"reading_kwh"`
+	ReadingKWh        FlexFloat64 `json:"reading_kwh"`
 	ReadAt            string  `json:"read_at"`
 	Note              string  `json:"note"`
 }
+
+type FlexFloat64 float64
+
+func (f *FlexFloat64) UnmarshalJSON(data []byte) error {
+	var fl float64
+	if err := json.Unmarshal(data, &fl); err == nil {
+		*f = FlexFloat64(fl)
+		return nil
+	}
+
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("reading_kwh must be a number or numeric string")
+	}
+
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return fmt.Errorf("reading_kwh is not a valid number: %w", err)
+	}
+
+	*f = FlexFloat64(parsed)
+	return nil
+}
+
 
 func MeterReadingHandler(w http.ResponseWriter, r *http.Request) {
 	expectedKey := strings.TrimSpace(os.Getenv("METER_SUBMIT_KEY"))
@@ -31,7 +57,7 @@ func MeterReadingHandler(w http.ResponseWriter, r *http.Request) {
 
 	var req MeterReadingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		http.Error(w, "Invalid request body" + err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -77,7 +103,7 @@ func MeterReadingHandler(w http.ResponseWriter, r *http.Request) {
 	reading := models.MeterReading{
 		MeterID:    meterId,
 		UserID:     userId,
-		ReadingKWh: req.ReadingKWh,
+		ReadingKWh: float64(req.ReadingKWh),
 		ReadAt:     readAt,
 		Note:       strings.TrimSpace(req.Note),
 	}
