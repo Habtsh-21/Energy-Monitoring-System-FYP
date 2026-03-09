@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 	"gorm.io/gorm"
 )
 
@@ -118,4 +120,51 @@ func MeterReadingHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(reading)
+}
+
+ func GetMeterReadingsHandler(w http.ResponseWriter, r *http.Request) {
+
+	vars := mux.Vars(r)
+	meterId, err := uuid.Parse(vars["meterId"])
+	if err != nil {
+		http.Error(w, "Invalid meter ID", http.StatusBadRequest)
+		return
+	}
+	
+	readings, err := models.GetMeterReadingByMeterID(meterId)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			http.Error(w, "No readings found for this meter", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to get readings", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(readings)
+}
+
+
+func GetUserReadingHandler(w http.ResponseWriter, r *http.Request) {
+
+	vars := mux.Vars(r)
+	userId, err := uuid.Parse(vars["userId"])
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+	
+	readings, err := models.GetMeterReadingByUserID(userId)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			http.Error(w, "No readings found for this user", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to get readings", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(readings)
 }

@@ -20,9 +20,7 @@ type MeterReading struct {
 	User  *User  `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
-func (MeterReading) TableName() string {
-	return "meter_readings"
-}
+
 
 func (reading *MeterReading) Create(tx *gorm.DB) error {
 	if tx == nil {
@@ -64,13 +62,14 @@ func GetAllMeterReading() ([]MeterReading, error) {
 	return readings, nil
 }
 
-func GetAllMeterReadingByMeterID(meterID uuid.UUID) ([]MeterReading, error) {
+func GetMeterReadingByMeterID(meterID uuid.UUID) ([]MeterReading, error) {
 	var readings []MeterReading
 	if err := db.DB.Where("meter_id = ?", meterID).Order("read_at desc").Find(&readings).Error; err != nil {
 		return nil, err
 	}
 	return readings, nil
 }
+
 
 func GetMeterReadingByUserID(userID uuid.UUID) ([]MeterReading, error) {
 	var readings []MeterReading
