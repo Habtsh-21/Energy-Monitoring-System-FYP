@@ -20,8 +20,6 @@ type MeterReading struct {
 	User  *User  `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
-
-
 func (reading *MeterReading) Create(tx *gorm.DB) error {
 	if tx == nil {
 		tx = db.DB
@@ -29,6 +27,7 @@ func (reading *MeterReading) Create(tx *gorm.DB) error {
 	if err := tx.Create(reading).Error; err != nil {
 		return err
 	}
+	
 	return nil
 }
 
@@ -54,34 +53,74 @@ func GetMeterReading(readingID uuid.UUID) (*MeterReading, error) {
 	return &reading, nil
 }
 
-func GetAllMeterReading() ([]MeterReading, error) {
+
+func GetAllMeterReadings(startTime, endTime time.Time, limit, offset int) ([]MeterReading, int64, error) {
 	var readings []MeterReading
-	if err := db.DB.Find(&readings).Error; err != nil {
-		return nil, err
+	var total int64
+	baseQuery := db.DB.Model(&MeterReading{}).Where("read_at BETWEEN ? AND ?", startTime, endTime)
+
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
 	}
-	return readings, nil
+	if err := baseQuery.
+		Order("read_at desc").
+		Limit(limit).
+		Offset(offset).
+		Find(&readings).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return readings, total, nil
 }
 
-func GetMeterReadingByMeterID(meterID uuid.UUID) ([]MeterReading, error) {
+
+func GetMeterReadingByMeterID(meterID uuid.UUID,startTime,endTime time.Time,limit, offset int) ([]MeterReading, int64, error) {
+
 	var readings []MeterReading
-	if err := db.DB.Where("meter_id = ?", meterID).Order("read_at desc").Find(&readings).Error; err != nil {
-		return nil, err
+	var total int64
+	baseQuery := db.DB.
+		Model(&MeterReading{}).
+		Where("meter_id = ? AND read_at BETWEEN ? AND ?", meterID, startTime, endTime)
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
 	}
-	return readings, nil
+	if err := baseQuery.
+		Order("read_at desc").
+		Limit(limit).
+		Offset(offset).
+		Find(&readings).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return readings, total, nil
+}
+func GetMeterReadingByUserID(userID uuid.UUID,startTime,endTime time.Time,limit, offset int) ([]MeterReading, int64, error) {
+
+	var readings []MeterReading
+	var total int64
+	baseQuery := db.DB.
+		Model(&MeterReading{}).
+		Where("user_id = ? AND read_at BETWEEN ? AND ?", userID, startTime, endTime)
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if err := baseQuery.
+		Order("read_at desc").
+		Limit(limit).
+		Offset(offset).
+		Find(&readings).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return readings, total, nil
 }
 
-
-func GetMeterReadingByUserID(userID uuid.UUID) ([]MeterReading, error) {
+func GetRecentMeterReadingsByMeterID(meterID uuid.UUID, limit int) ([]MeterReading, error) {
 	var readings []MeterReading
-	if err := db.DB.Where("user_id = ?", userID).Order("read_at desc").Find(&readings).Error; err != nil {
-		return nil, err
-	}
-	return readings, nil
-}
-
-func GetReadingUserPerMeter(meterID uuid.UUID, userID uuid.UUID) ([]MeterReading, error) {
-	var readings []MeterReading
-	if err := db.DB.Where("meter_id = ? AND user_id = ?", meterID, userID).Order("read_at desc").Find(&readings).Error; err != nil {
+	if err := db.DB.Where("meter_id = ?", meterID).
+		Order("read_at desc").
+		Limit(limit).
+		Find(&readings).Error; err != nil {
 		return nil, err
 	}
 	return readings, nil

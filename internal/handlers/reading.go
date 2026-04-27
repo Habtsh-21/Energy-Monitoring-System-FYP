@@ -12,16 +12,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
 	"gorm.io/gorm"
 )
 
 type MeterReadingRequest struct {
-	MeterSerialNumber string  `json:"meter_serial_number"`
+	MeterSerialNumber string      `json:"meter_serial_number"`
 	ReadingKWh        FlexFloat64 `json:"reading_kwh"`
-	ReadAt            string  `json:"read_at"`
-	Note              string  `json:"note"`
+	ReadAt            string      `json:"read_at"`
+	Note              string      `json:"note"`
 }
+
+var defaultLimit int = 10
+var defaultOffset int = 0
 
 type FlexFloat64 float64
 
@@ -46,10 +48,9 @@ func (f *FlexFloat64) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-
 func MeterReadingHandler(w http.ResponseWriter, r *http.Request) {
 	expectedKey := strings.TrimSpace(os.Getenv("METER_SUBMIT_KEY"))
-	
+
 	if expectedKey != "" {
 		if r.Header.Get("X-Meter-Key") != expectedKey {
 			http.Error(w, "Unauthorized meter key", http.StatusUnauthorized)
@@ -59,7 +60,7 @@ func MeterReadingHandler(w http.ResponseWriter, r *http.Request) {
 
 	var req MeterReadingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body" + err.Error(), http.StatusBadRequest)
+		http.Error(w, "Invalid request body"+err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -92,7 +93,7 @@ func MeterReadingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userId,err := models.GetUserIdByMeterId(meterId)
+	userId, err := models.GetUserIdByMeterId(meterId)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			http.Error(w, "No active user assigned to this meter", http.StatusConflict)
@@ -116,55 +117,287 @@ func MeterReadingHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to save meter reading", http.StatusInternalServerError)
 		return
 	}
+	
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(reading)
 }
 
- func GetMeterReadingHandler(w http.ResponseWriter, r *http.Request) {
+func GetAllMeterReadingHandler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
 
-	vars := mux.Vars(r)
-	meterId, err := uuid.Parse(vars["id"])
-	if err != nil {
-		http.Error(w, "Invalid meter ID", http.StatusBadRequest)
+	startTimeStr := query.Get("start_time")
+	endTimeStr := query.Get("end_time")
+	limitStr := query.Get("limit")
+	offsetStr := query.Get("offset")
+
+	// Validate limit
+	if limitStr == "" {
+		http.Error(w, "Missing limit", http.StatusBadRequest)
 		return
 	}
-	
-	readings, err := models.GetMeterReadingByMeterID(meterId)
+
+	limit, err := strconv.Atoi(limitStr)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			http.Error(w, "No readings found for this meter", http.StatusNotFound)
+		http.Error(w, "Invalid limit", http.StatusBadRequest)
+		return
+	}
+
+	// Enforce safe limit
+	if limit <= 0 || limit > 100 {
+		limit = 10
+	}
+
+	// Optional offset
+	offset := 0
+	if offsetStr != "" {
+		offset, err = strconv.Atoi(offsetStr)
+		if err != nil {
+			http.Error(w, "Invalid offset", http.StatusBadRequest)
 			return
 		}
+	}
+
+	// Validate time
+	if startTimeStr == "" || endTimeStr == "" {
+		http.Error(w, "Missing start_time or end_time", http.StatusBadRequest)
+		return
+	}
+
+	startTime, err := time.Parse(time.RFC3339, startTimeStr)
+	if err != nil {
+		http.Error(w, "Invalid start_time format (use RFC3339)", http.StatusBadRequest)
+		return
+	}
+
+	endTime, err := time.Parse(time.RFC3339, endTimeStr)
+	if err != nil {
+		http.Error(w, "Invalid end_time format (use RFC3339)", http.StatusBadRequest)
+		return
+	}
+
+	if endTime.Before(startTime) {
+		http.Error(w, "end_time must be after start_time", http.StatusBadRequest)
+		return
+	}
+
+	readings, total, err := models.GetAllMeterReadings(startTime, endTime, limit, offset)
+	if err != nil {
 		http.Error(w, "Failed to get readings", http.StatusInternalServerError)
 		return
 	}
 
+	response := struct {
+		Readings []models.MeterReading `json:"readings"`
+		Total    int64                 `json:"total"`
+	}{
+		Readings: readings,
+		Total:    total,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(readings)
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
 }
 
 
-func GetUserReadingHandler(w http.ResponseWriter, r *http.Request) {
 
-	vars := mux.Vars(r)
-	userId, err := uuid.Parse(vars["id"])
-	if err != nil {
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+func GetMeterReadingByMeterIDHandler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+
+	meterIDStr := query.Get("meter_id")
+	startTimeStr := query.Get("start_time")
+	endTimeStr := query.Get("end_time")
+	limitStr := query.Get("limit")
+	offsetStr := query.Get("offset")
+
+	if meterIDStr == "" {
+		http.Error(w, "Missing meter_id", http.StatusBadRequest)
 		return
 	}
-	
-	readings, err := models.GetMeterReadingByUserID(userId)
+
+	meterID, err := uuid.Parse(meterIDStr)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			http.Error(w, "No readings found for this user", http.StatusNotFound)
+		http.Error(w, "Invalid meter_id", http.StatusBadRequest)
+		return
+	}
+
+	if limitStr == "" {
+		http.Error(w, "Missing limit", http.StatusBadRequest)
+		return
+	}
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		http.Error(w, "Invalid limit", http.StatusBadRequest)
+		return
+	}
+
+	if limit <= 0 || limit > 100 {
+		limit = 10
+	}
+
+	offset := 0
+	if offsetStr != "" {
+		offset, err = strconv.Atoi(offsetStr)
+		if err != nil {
+			http.Error(w, "Invalid offset", http.StatusBadRequest)
 			return
 		}
+	}
+
+	if startTimeStr == "" || endTimeStr == "" {
+		http.Error(w, "Missing start_time or end_time", http.StatusBadRequest)
+		return
+	}
+
+	startTime, err := time.Parse(time.RFC3339, startTimeStr)
+	if err != nil {
+		http.Error(w, "Invalid start_time format", http.StatusBadRequest)
+		return
+	}
+
+	endTime, err := time.Parse(time.RFC3339, endTimeStr)
+	if err != nil {
+		http.Error(w, "Invalid end_time format", http.StatusBadRequest)
+		return
+	}
+
+	if endTime.Before(startTime) {
+		http.Error(w, "end_time must be after start_time", http.StatusBadRequest)
+		return
+	}
+
+	readings, total, err := models.GetMeterReadingByMeterID(meterID, startTime, endTime, limit, offset)
+	if err != nil {
 		http.Error(w, "Failed to get readings", http.StatusInternalServerError)
 		return
 	}
 
+	response := struct {
+		Readings []models.MeterReading `json:"readings"`
+		Total    int64                 `json:"total"`
+	}{
+		Readings: readings,
+		Total:    total,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(readings)
+	json.NewEncoder(w).Encode(response)
+}
+
+
+
+func GetMeterReadingByUserIDHandler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+
+	userIDStr := query.Get("user_id")
+	startTimeStr := query.Get("start_time")
+	endTimeStr := query.Get("end_time")
+	limitStr := query.Get("limit")
+	offsetStr := query.Get("offset")
+
+	// Validate user_id
+	if userIDStr == "" {
+		http.Error(w, "Missing user_id", http.StatusBadRequest)
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		http.Error(w, "Invalid user_id", http.StatusBadRequest)
+		return
+	}
+
+	// Validate limit
+	if limitStr == "" {
+		http.Error(w, "Missing limit", http.StatusBadRequest)
+		return
+	}
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		http.Error(w, "Invalid limit", http.StatusBadRequest)
+		return
+	}
+
+	// Enforce safe limit
+	if limit <= 0 || limit > 100 {
+		limit = 10
+	}
+
+	// Optional offset
+	offset := 0
+	if offsetStr != "" {
+		offset, err = strconv.Atoi(offsetStr)
+		if err != nil {
+			http.Error(w, "Invalid offset", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Validate time
+	if startTimeStr == "" || endTimeStr == "" {
+		http.Error(w, "Missing start_time or end_time", http.StatusBadRequest)
+		return
+	}
+
+	startTime, err := time.Parse(time.RFC3339, startTimeStr)
+	if err != nil {
+		http.Error(w, "Invalid start_time format", http.StatusBadRequest)
+		return
+	}
+
+	endTime, err := time.Parse(time.RFC3339, endTimeStr)
+	if err != nil {
+		http.Error(w, "Invalid end_time format", http.StatusBadRequest)
+		return
+	}
+
+	if endTime.Before(startTime) {
+		http.Error(w, "end_time must be after start_time", http.StatusBadRequest)
+		return
+	}
+
+	// DB call
+	readings, total, err := models.GetMeterReadingByUserID(userID, startTime, endTime, limit, offset)
+	if err != nil {
+		http.Error(w, "Failed to get readings", http.StatusInternalServerError)
+		return
+	}
+
+	response := struct {
+		Readings []models.MeterReading `json:"readings"`
+		Total    int64                 `json:"total"`
+	}{
+		Readings: readings,
+		Total:    total,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+
+
+
+
+
+
+func createAnomaly(reading models.MeterReading, anomalyType, reason string) error {
+
+	anomaly := models.Anomaly{
+		ReadingID:  reading.ID,
+		Type:       anomalyType,
+		Reason:     reason,
+		Status:     models.AnomalyStatusOpen,
+		DetectedAt: time.Now(),
+	}
+	anomaly.CreatedAt = time.Now()
+	anomaly.UpdatedAt = time.Now()
+
+	return anomaly.Create()
 }

@@ -5,6 +5,7 @@ import (
 	"energy-monitoring-system/internal/db"
 	"energy-monitoring-system/internal/models"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -51,7 +52,7 @@ func (h *AdminHandler) UserRegisterHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	user.Password = string(hashedPassword)
-		
+
 	isAvailable, err := models.IsMeterAvailable(user.MeterID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -369,4 +370,57 @@ func (h *AdminHandler) GetllRecordHandler(w http.ResponseWriter, r *http.Request
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(records)
+}
+
+type ResolveAnomalyRequest struct {
+	ResolvedBy     string `json:"resolved_by"`
+	ResolutionNote string `json:"resolution_note"`
+}
+
+func (h *AdminHandler) GetAnomaliesHandler(w http.ResponseWriter, r *http.Request) {
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	if status != "" && status != models.AnomalyStatusOpen && status != models.AnomalyStatusResolved {
+		http.Error(w, "status must be open or resolved", http.StatusBadRequest)
+		return
+	}
+
+	anomalies, err := models.GetAnomalies(status)
+	if err != nil {
+		http.Error(w, "Failed to get anomalies", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(anomalies)
+}
+
+func (h *AdminHandler) ResolveAnomalyHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	anomalyID, err := uuid.Parse(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid anomaly ID", http.StatusBadRequest)
+		return
+	}
+
+	var req ResolveAnomalyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	resolvedBy := strings.TrimSpace(req.ResolvedBy)
+	if resolvedBy == "" {
+		resolvedBy = "admin"
+	}
+
+	if err := models.ResolveAnomaly(anomalyID, resolvedBy, strings.TrimSpace(req.ResolutionNote)); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			http.Error(w, "Anomaly not found or already resolved", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to resolve anomaly", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
