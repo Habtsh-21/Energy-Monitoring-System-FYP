@@ -19,7 +19,7 @@ const (
 type Anomaly struct {
 	BaseModel
 	ReadingID      uuid.UUID  `gorm:"type:uuid;not null;index" json:"reading_id"`
-	Type      string     `gorm:"size:50;not null;index" json:"type"`
+	Type           string     `gorm:"size:50;not null;index" json:"type"`
 	Reason         string     `gorm:"size:500;not null" json:"reason"`
 	Status         string     `gorm:"size:20;not null;default:open;index" json:"status"`
 	DetectedAt     time.Time  `gorm:"not null;index" json:"detected_at"`
@@ -27,9 +27,8 @@ type Anomaly struct {
 	ResolvedBy     string     `gorm:"size:100" json:"resolved_by"`
 	ResolutionNote string     `gorm:"size:500" json:"resolution_note"`
 
-	Reading *MeterReading `gorm:"foreignKey:ReadingID" json:"reading,omitempty"`
+	LineReading *LineReading `gorm:"foreignKey:ReadingID" json:"line_reading,omitempty"`
 }
-
 
 func (anomaly *Anomaly) Create() error {
 
@@ -38,7 +37,7 @@ func (anomaly *Anomaly) Create() error {
 
 func GetAnomalies(status string) ([]Anomaly, error) {
 	var anomalies []Anomaly
-	query := db.DB.Preload("Reading").Order("detected_at desc")
+	query := db.DB.Preload("LineReading").Order("detected_at desc")
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
@@ -47,7 +46,6 @@ func GetAnomalies(status string) ([]Anomaly, error) {
 	}
 	return anomalies, nil
 }
-
 
 func ResolveAnomaly(anomalyID uuid.UUID, resolvedBy, note string) error {
 	resolvedAt := time.Now()

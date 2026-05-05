@@ -24,24 +24,21 @@ type BaseModel struct {
 }
 
 type User struct {
-    BaseModel
+	BaseModel
 
-    Password    string     `gorm:"column:password;not null" json:"-"`
-    FullName    string     `gorm:"column:full_name;size:255;not null" json:"full_name" validate:"required"`
-    PhoneNumber string     `gorm:"column:phone_number;size:20;uniqueIndex:idx_phone_number,where:deleted_at IS NULL" json:"phone_number"`
-    Address     Address    `gorm:"embedded" json:"address"`
-    LastLogin   *time.Time `gorm:"column:last_login" json:"last_login"`
-    IsActive    bool       `gorm:"default:true" json:"is_active"`
+	Password    string     `gorm:"column:password;not null" json:"-"`
+	FullName    string     `gorm:"column:full_name;size:255;not null" json:"full_name" validate:"required"`
+	PhoneNumber string     `gorm:"column:phone_number;size:20;uniqueIndex:idx_phone_number,where:deleted_at IS NULL" json:"phone_number"`
+	Address     Address    `gorm:"embedded" json:"address"`
+	LastLogin   *time.Time `gorm:"column:last_login" json:"last_login"`
+	IsActive    bool       `gorm:"default:true" json:"is_active"`
 
-    MeterID uuid.UUID `gorm:"column:meter_id;type:uuid;uniqueIndex:idx_meter_id,where:deleted_at IS NULL" json:"meter_id"`
+	MeterID uuid.UUID `gorm:"column:meter_id;type:uuid;uniqueIndex:idx_meter_id,where:deleted_at IS NULL" json:"meter_id"`
 
-    Meter  *Meter   `gorm:"foreignKey:MeterID" json:"meter,omitempty"`
-    Record []Record `gorm:"foreignKey:UserID" json:"records,omitempty"`
-	Reading []MeterReading `gorm:"foreignKey:UserID" json:"readings,omitempty"`
-
-
+	Meter       *Meter        `gorm:"foreignKey:MeterID" json:"meter,omitempty"`
+	Record      []Record      `gorm:"foreignKey:UserID" json:"records,omitempty"`
+	LineReading []LineReading `gorm:"foreignKey:UserID" json:"line_readings,omitempty"`
 }
-
 
 func (user *User) Create(tx *gorm.DB) error {
 	if tx == nil {
@@ -60,14 +57,12 @@ func (user *User) Update() error {
 	return nil
 }
 
-
 func UpdateUserParameters(tx *gorm.DB, userId uuid.UUID, updates map[string]any) error {
 	if err := tx.Model(&User{}).Where("id = ?", userId).Updates(updates).Error; err != nil {
 		return err
-	}	
+	}
 	return nil
 }
-
 
 func (user *User) Delete(tx *gorm.DB) error {
 	if tx == nil {
@@ -87,11 +82,11 @@ func GetUser(userId uuid.UUID) (*User, error) {
 	return &user, nil
 }
 func GetUserByPhone(tx *gorm.DB, phone string) (*User, error) {
-    var user User
-    err := tx.Select("id, password, is_active").
-        Where("phone_number = ?", phone).
-        First(&user).Error
-    return &user, err
+	var user User
+	err := tx.Select("id, password, is_active").
+		Where("phone_number = ?", phone).
+		First(&user).Error
+	return &user, err
 }
 
 func GetUserIdByMeterId(meterId uuid.UUID) (uuid.UUID, error) {
@@ -110,7 +105,6 @@ func GetAllUser() ([]User, error) {
 	return users, nil
 }
 
-
 func GetAllUserWithDeleted() ([]User, error) {
 	var users []User
 	if err := db.DB.Unscoped().Find(&users).Error; err != nil {
@@ -118,7 +112,6 @@ func GetAllUserWithDeleted() ([]User, error) {
 	}
 	return users, nil
 }
-
 
 func CheckPhoneNumber(phoneNumber string) bool {
 	var user User

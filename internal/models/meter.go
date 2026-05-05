@@ -16,8 +16,8 @@ type Meter struct {
 	FirmwareVersion   string `gorm:"column:firmware_version;size:50" json:"firmware_version"`
 	IsAvailable       bool   `gorm:"default:true;index" json:"is_available"`
 
-	Record []Record `gorm:"foreignKey:MeterID;" json:"record,omitempty"`
-	Reading []MeterReading `gorm:"foreignKey:MeterID;" json:"reading,omitempty"`
+	Record      []Record      `gorm:"foreignKey:MeterID;" json:"record,omitempty"`
+	LineReading []LineReading `gorm:"foreignKey:MeterID;" json:"line_reading,omitempty"`
 }
 
 func (meter *Meter) Create() error {
@@ -109,7 +109,6 @@ func IsMeterAvailable(meterID uuid.UUID) (bool, error) {
 	}
 	return true, nil
 }
-
 
 func PermanentMeterDelete(meterID uuid.UUID) error {
 	var meter Meter

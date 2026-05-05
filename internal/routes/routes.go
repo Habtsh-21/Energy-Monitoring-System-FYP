@@ -32,9 +32,9 @@ func RegisterRoutes(r *mux.Router) {
 	admin.HandleFunc("/anomalies", adminHandler.GetAnomaliesHandler).Methods("GET")
 	admin.HandleFunc("/anomaly/{id}/resolve", adminHandler.ResolveAnomalyHandler).Methods("PUT")
 
-	r.HandleFunc("/reading", handlers.MeterReadingHandler).Methods("POST")
-	r.HandleFunc("/reading", handlers.GetAllMeterReadingHandler).Methods("GET")
-	r.HandleFunc("/reading/m/{meter_id}", handlers.GetMeterReadingByMeterIDHandler).Methods("GET")
-	r.HandleFunc("/reading/u/{user_id}", handlers.GetMeterReadingByUserIDHandler).Methods("GET")
+	r.HandleFunc("/line-reading", handlers.LineReadingHandler).Methods("POST")
+	r.HandleFunc("/line-reading/m/{meter_id}", handlers.GetLineReadingsByMeterIDHandler).Methods("GET")
+	r.HandleFunc("/line-reading/analyse", handlers.AnalyseMeterHandler).Methods("GET")
+	r.HandleFunc("/line-reading/analyse/batch", handlers.RunNightlyBatchHandler).Methods("POST")
 
 }
