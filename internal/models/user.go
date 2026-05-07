@@ -26,7 +26,7 @@ type BaseModel struct {
 type User struct {
 	BaseModel
 
-	Password    string     `gorm:"column:password;not null" json:"-"`
+	Password    string     `gorm:"column:password;not null;default:''" json:"-"`
 	FullName    string     `gorm:"column:full_name;size:255;not null" json:"full_name" validate:"required"`
 	PhoneNumber string     `gorm:"column:phone_number;size:20;uniqueIndex:idx_phone_number,where:deleted_at IS NULL" json:"phone_number"`
 	Address     Address    `gorm:"embedded" json:"address"`

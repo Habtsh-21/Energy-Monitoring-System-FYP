@@ -15,6 +15,7 @@ type Meter struct {
 	Model             string `gorm:"size:100" json:"model"`
 	FirmwareVersion   string `gorm:"column:firmware_version;size:50" json:"firmware_version"`
 	IsAvailable       bool   `gorm:"default:true;index" json:"is_available"`
+	RelayStatus       string `gorm:"size:20;default:'ON'" json:"relay_status"` // ON, OFF
 
 	Record      []Record      `gorm:"foreignKey:MeterID;" json:"record,omitempty"`
 	LineReading []LineReading `gorm:"foreignKey:MeterID;" json:"line_reading,omitempty"`

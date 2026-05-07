@@ -93,9 +93,15 @@ func (h *AdminHandler) UserRegisterHandler(w http.ResponseWriter, r *http.Reques
 		if err = models.UpdateMeterParameters(tx, user.MeterID, map[string]any{"is_available": false}); err != nil {
 			return err
 		}
-
-		return nil
-	})
+		//create wallet for a user
+		wallet := models.Wallet{
+			UserID:  user.ID,
+		}
+		if err := wallet.Create(tx); err != nil {
+			return err
+		}
+		return nil	
+	}) 
 
 	if err != nil {
 		http.Error(w, "Failed to register: "+err.Error(), http.StatusInternalServerError)

@@ -14,6 +14,10 @@ func RegisterRoutes(r *mux.Router) {
 	user.HandleFunc("/", handlers.UserHomeHandler).Methods("GET")
 	r.HandleFunc("/login", handlers.LoginHandler).Methods("POST")
 
+	user.HandleFunc("/wallet/topup", handlers.WalletTopUpHandler).Methods("POST")
+	user.HandleFunc("/wallet/balance", handlers.GetWalletBalanceHandler).Methods("GET")
+	user.HandleFunc("/wallet/transactions", handlers.GetWalletTransactionsHandler).Methods("GET")
+
 	adminHandler := handlers.NewAdminHandler()
 	admin := r.PathPrefix("/adm").Subrouter()
 	admin.Use(middleware.AdminPathPermission)
@@ -31,10 +35,13 @@ func RegisterRoutes(r *mux.Router) {
 	admin.HandleFunc("/records", adminHandler.GetllRecordHandler).Methods("GET")
 	admin.HandleFunc("/anomalies", adminHandler.GetAnomaliesHandler).Methods("GET")
 	admin.HandleFunc("/anomaly/{id}/resolve", adminHandler.ResolveAnomalyHandler).Methods("PUT")
+	r.HandleFunc("/tariffs", handlers.AdminSetTariffHandler).Methods("POST")
+	r.HandleFunc("/tariffs", handlers.AdminGetTariffsHandler).Methods("GET")
 
 	r.HandleFunc("/line-reading", handlers.LineReadingHandler).Methods("POST")
 	r.HandleFunc("/line-reading/m/{meter_id}", handlers.GetLineReadingsByMeterIDHandler).Methods("GET")
 	r.HandleFunc("/line-reading/analyse", handlers.AnalyseMeterHandler).Methods("GET")
 	r.HandleFunc("/line-reading/analyse/batch", handlers.RunNightlyBatchHandler).Methods("POST")
-
+	r.HandleFunc("/calculate-cost",handlers.CalculateCostHandler).Methods("GET")
+	r.HandleFunc("/calculate-kwh",handlers.CalculateKwhHandler).Methods("GET")
 }
