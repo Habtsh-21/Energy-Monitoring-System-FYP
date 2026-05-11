@@ -45,38 +45,48 @@ func (lr *LineReading) ComputeDerived() {
 	}
 }
 
-type BypassSeverity string
 
-const (
-	SeverityNone      BypassSeverity = "none"
-	SeveritySuspect   BypassSeverity = "suspected"
-	SeverityConfirmed BypassSeverity = "confirmed"
+type LineReadingRequest struct {
+	MeterSerialNumber string  `json:"meter_serial_number"`
+	LoopDuration      float64 `json:"loop_duration"`
+	PoleCurrentA      float64 `json:"pole_current_a"`
+	PoleVoltageV      float64 `json:"pole_voltage_v"`
+	MeterCurrentA     float64 `json:"meter_current_a"`
+	MeterVoltageV     float64 `json:"meter_voltage_v"`
+	PolePowerVA       float64 `json:"pole_power_va"`
+	MeterPowerVA      float64 `json:"meter_power_va"`
+	ConsumedKwh       float64 `json:"consumed_kwh"`
+	RemainingKwh      float64 `json:"remaining_kwh"`
+	PowerLossPct      float64 `json:"power_loss_pct"`
+	IsConnected       bool    `json:"is_connected"`
+	BypassStatus      string  `json:"bypass_status"`
+	SystemLocked      bool    `json:"system_locked"`
+	RecordedAt        string  `json:"recorded_at"` 
+	Note              string  `json:"note"`
+}
+
+
+type Severity string
+
+
+
+var ( 
+	SeverityNormal    Severity = "normal"
+	SeveritySuspect   Severity = "suspect"
+	SeverityConfirmed Severity = "confirmed"
 )
 
+
 type BypassResult struct {
-	Severity    BypassSeverity
 	PowerLoss   float64
 	CurrentLoss float64
 	VoltageDrop float64
 	Signals     []string
 	Reason      string
+	Severity    Severity
 }
 
-type WindowStats struct {
-	Count                int
-	MeanPowerLossPct     float64
-	StdDevPowerLossPct   float64
-	MaxPowerLossPct      float64
-	MeanDeltaCurrentA    float64
-	StdDevDeltaCurrentA  float64
-	MaxDeltaCurrentA     float64
-	MeanDeltaVoltageV    float64
-	MaxDeltaVoltageV     float64
-	SuspiciousCount      int
-	PersistenceRate      float64
-	TrendSlopePctPerHour float64
-	TrendR2              float64
-}
+
 
 const (
 	LineCurrentLowThreshold  float64 = 1.0
@@ -87,10 +97,6 @@ const (
 	PowerLossHighThreshold   float64 = 15.0
 )
 
-const (
-	AnomalyTypeBypassSuspected = "bypass_suspected"
-	AnomalyTypeBypassConfirmed = "bypass_confirmed"
-)
 
 func (lr *LineReading) Create(tx *gorm.DB) error {
 	if tx == nil {
@@ -98,27 +104,7 @@ func (lr *LineReading) Create(tx *gorm.DB) error {
 	}
 	return tx.Create(lr).Error
 }
-
-func CreateLineReadingWithAnomaly(lr *LineReading, result BypassResult) error {
-	return db.DB.Transaction(func(tx *gorm.DB) error {
-		if err := lr.Create(tx); err != nil {
-			return err
-		}
-		if result.Severity == SeverityNone {
-			return nil
-		}
-
-		aType := AnomalyTypeBypassSuspected
-		if result.Severity == SeverityConfirmed {
-			aType = AnomalyTypeBypassConfirmed
-		}
-
-		anomaly := Anomaly{ReadingID: lr.ID, Type: aType, Reason: result.Reason, Status: AnomalyStatusOpen, DetectedAt: lr.RecordedAt}
-		anomaly.CreatedAt = lr.RecordedAt
-		anomaly.UpdatedAt = lr.RecordedAt
-		return tx.Create(&anomaly).Error
-	})
-}
+ 
 
 func GetLineReadingsByMeterID(meterID uuid.UUID, start, end time.Time, limit, offset int) ([]LineReading, int64, error) {
 	var rows []LineReading
@@ -133,6 +119,8 @@ func GetLineReadingsByMeterID(meterID uuid.UUID, start, end time.Time, limit, of
 	}
 	return rows, total, nil
 }
+
+
 
 func GetRecentLineReadings(meterID uuid.UUID, limit int) ([]LineReading, error) {
 	var rows []LineReading

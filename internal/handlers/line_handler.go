@@ -15,15 +15,6 @@ import (
 	"gorm.io/gorm"
 )
 
-type LineReadingRequest struct {
-	MeterSerialNumber string  `json:"meter_serial_number"`
-	PoleCurrentA      float64 `json:"pole_current_a"`
-	PoleVoltageV      float64 `json:"pole_voltage_v"`
-	MeterCurrentA     float64 `json:"meter_current_a"`
-	MeterVoltageV     float64 `json:"meter_voltage_v"`
-	RecordedAt        string  `json:"recorded_at"` 
-	Note              string  `json:"note"`
-}
 
 type LineReadingResponse struct {
 	Reading   models.LineReading  `json:"reading"`
@@ -37,8 +28,7 @@ func LineReadingHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
-	var req LineReadingRequest
+	var req models.LineReadingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
 		return
@@ -77,6 +67,8 @@ func LineReadingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	
+
 	userID, err := models.GetUserIdByMeterId(meterID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -86,6 +78,7 @@ func LineReadingHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to resolve meter owner", http.StatusInternalServerError)
 		return
 	}
+    
 
 	lr := models.LineReading{
 		MeterID:       meterID,
@@ -103,11 +96,7 @@ func LineReadingHandler(w http.ResponseWriter, r *http.Request) {
 
 	detection := services.DetectBypass(&lr)
 
-	if err := models.CreateLineReadingWithAnomaly(&lr, detection); err != nil {
-		http.Error(w, "Failed to save line reading", http.StatusInternalServerError)
-		return
-	}
-
+	
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -149,51 +138,6 @@ func GetLineReadingsByMeterIDHandler(w http.ResponseWriter, r *http.Request) {
 		Readings []models.LineReading `json:"readings"`
 		Total    int64                `json:"total"`
 	}{Readings: readings, Total: total})
-}
-
-
-func AnalyseMeterHandler(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-
-	meterIDStr := q.Get("meter_id")
-	if meterIDStr == "" {
-		http.Error(w, "Missing meter_id", http.StatusBadRequest)
-		return
-	}
-	meterID, err := uuid.Parse(meterIDStr)
-	if err != nil {
-		http.Error(w, "Invalid meter_id", http.StatusBadRequest)
-		return
-	}
-
-	cfg := services.DefaultAnalyserConfig()
-	if windowStr := q.Get("window"); windowStr != "" {
-		if w2, err := strconv.Atoi(windowStr); err == nil && w2 > 0 {
-			cfg.WindowSize = w2
-		}
-	}
-
-	analyser := services.NewLineAnalyser(cfg)
-	report, err := analyser.AnalyseMeter(meterID)
-	if err != nil {
-		http.Error(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(report)
-}
-
-func RunNightlyBatchHandler(w http.ResponseWriter, r *http.Request) {
-	analyser := services.NewLineAnalyser(services.DefaultAnalyserConfig())
-	batch, err := analyser.RunNightlyBatch()
-	if err != nil {
-		http.Error(w, "Batch analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(batch)
 }
 
 func parseLineQueryParams(w http.ResponseWriter, r *http.Request) (

@@ -40,8 +40,6 @@ func RegisterRoutes(r *mux.Router) {
 
 	r.HandleFunc("/line-reading", handlers.LineReadingHandler).Methods("POST")
 	r.HandleFunc("/line-reading/m/{meter_id}", handlers.GetLineReadingsByMeterIDHandler).Methods("GET")
-	r.HandleFunc("/line-reading/analyse", handlers.AnalyseMeterHandler).Methods("GET")
-	r.HandleFunc("/line-reading/analyse/batch", handlers.RunNightlyBatchHandler).Methods("POST")
 	r.HandleFunc("/calculate-cost",handlers.CalculateCostHandler).Methods("GET")
 	r.HandleFunc("/calculate-kwh",handlers.CalculateKwhHandler).Methods("GET")
 }

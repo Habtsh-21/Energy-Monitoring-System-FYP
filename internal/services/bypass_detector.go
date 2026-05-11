@@ -10,7 +10,6 @@ func DetectBypass(lr *models.LineReading) models.BypassResult {
 		PowerLoss:   lr.PowerLossPct,
 		CurrentLoss: lr.DeltaCurrentA,
 		VoltageDrop: lr.DeltaVoltageV,
-		Severity:    models.SeverityNone,
 	}
 
 	highCount := 0
@@ -43,13 +42,16 @@ func DetectBypass(lr *models.LineReading) models.BypassResult {
 		lowCount++
 	}
 
-	if highCount >= 2 || (highCount >= 1 && lowCount >= 1) {
+	switch {
+	case highCount >= 2 || (highCount >= 1 && lowCount >= 1):
 		res.Severity = models.SeverityConfirmed
-	} else if highCount >= 1 || lowCount >= 1 {
+	case highCount >= 1 || lowCount >= 1:
 		res.Severity = models.SeveritySuspect
+	default:
+		res.Severity = models.SeverityNormal
 	}
 
-	if res.Severity != models.SeverityNone {
+	if res.Severity != models.SeverityNormal {
 		res.Reason = fmt.Sprintf("Pole %.1fV/%.3fA -> Meter %.1fV/%.3fA. Triggered: %v",
 			lr.PoleVoltageV, lr.PoleCurrentA, lr.MeterVoltageV, lr.MeterCurrentA, res.Signals)
 	}
