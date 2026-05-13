@@ -32,8 +32,6 @@ type LineReading struct {
 	User  *User  `gorm:"foreignKey:UserID"  json:"user,omitempty"`
 }
 
-
-
 func (lr *LineReading) ComputeDerived() {
 	lr.PoleApparentPowerVA = lr.PoleVoltageV * lr.PoleCurrentA
 	lr.MeterApparentPowerVA = lr.MeterVoltageV * lr.MeterCurrentA
@@ -44,7 +42,6 @@ func (lr *LineReading) ComputeDerived() {
 		lr.PowerLossPct = ((lr.PoleApparentPowerVA - lr.MeterApparentPowerVA) / lr.PoleApparentPowerVA) * 100
 	}
 }
-
 
 type LineReadingRequest struct {
 	MeterSerialNumber string  `json:"meter_serial_number"`
@@ -61,21 +58,26 @@ type LineReadingRequest struct {
 	IsConnected       bool    `json:"is_connected"`
 	BypassStatus      string  `json:"bypass_status"`
 	SystemLocked      bool    `json:"system_locked"`
-	RecordedAt        string  `json:"recorded_at"` 
+	RecordedAt        string  `json:"recorded_at"`
 	Note              string  `json:"note"`
 }
 
+type LineReadingsResponse struct {
+	ID                   uuid.UUID `gorm:"type:uuid;not null;index" json:"id"`
+	MeterID              uuid.UUID `gorm:"type:uuid;not null;index" json:"meter_id"`
+	UserID               uuid.UUID `gorm:"type:uuid;not null;index" json:"user_id"`
+	PoleApparentPowerVA  float64   `gorm:"not null" json:"pole_apparent_power_va"`
+	MeterApparentPowerVA float64   `gorm:"not null" json:"meter_apparent_power_va"`
+	PowerLossPct         float64   `gorm:"not null" json:"power_loss_pct"`
+}
 
 type Severity string
 
-
-
-var ( 
+var (
 	SeverityNormal    Severity = "normal"
 	SeveritySuspect   Severity = "suspect"
 	SeverityConfirmed Severity = "confirmed"
 )
-
 
 type BypassResult struct {
 	PowerLoss   float64
@@ -86,8 +88,6 @@ type BypassResult struct {
 	Severity    Severity
 }
 
-
-
 const (
 	LineCurrentLowThreshold  float64 = 1.0
 	LineCurrentHighThreshold float64 = 3.0
@@ -97,39 +97,35 @@ const (
 	PowerLossHighThreshold   float64 = 15.0
 )
 
-
 func (lr *LineReading) Create(tx *gorm.DB) error {
 	if tx == nil {
 		tx = db.DB
-	}
+	} 
 	return tx.Create(lr).Error
 }
+
+func GetReadingRecord(recordID uuid.UUID) (*LineReading, error) {
+	var reading LineReading
+	err := db.DB.Where("id = ?", recordID).Preload("Meter").Preload("User").First(&reading).Error
+	if err != nil {
+		return nil, err
+	}
+	return &reading, nil
+}
+
+func GetLineReadings() ([]LineReadingsResponse,error) {
+	readings := make([]LineReadingsResponse, 0)
+
+	err := db.DB.
+		Model(&LineReading{}).
+		Select("id","meter_id", "user_id", "pole_apparent_power_va", "meter_apparent_power_va", "power_loss_pct").
+		Scan(&readings).Error
+	if err != nil {
+		return nil,err
+	}
+	return readings,nil
+}
+
+
+
  
-
-func GetLineReadingsByMeterID(meterID uuid.UUID, start, end time.Time, limit, offset int) ([]LineReading, int64, error) {
-	var rows []LineReading
-	var total int64
-
-	base := db.DB.Model(&LineReading{}).Where("meter_id = ? AND recorded_at BETWEEN ? AND ?", meterID, start, end)
-	if err := base.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	if err := base.Order("recorded_at asc").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
-		return nil, 0, err
-	}
-	return rows, total, nil
-}
-
-
-
-func GetRecentLineReadings(meterID uuid.UUID, limit int) ([]LineReading, error) {
-	var rows []LineReading
-	err := db.DB.Where("meter_id = ?", meterID).Order("recorded_at desc").Limit(limit).Find(&rows).Error
-	return rows, err
-}
-
-func GetAllActiveMeterIDs() ([]uuid.UUID, error) {
-	var ids []uuid.UUID
-	err := db.DB.Model(&LineReading{}).Distinct("meter_id").Pluck("meter_id", &ids).Error
-	return ids, err
-}

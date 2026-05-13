@@ -2,10 +2,13 @@ package models
 
 import (
 	"energy-monitoring-system/internal/db"
+	
+	"strings"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
 
 type Meter struct {
 	BaseModel
@@ -15,10 +18,18 @@ type Meter struct {
 	Model             string `gorm:"size:100" json:"model"`
 	FirmwareVersion   string `gorm:"column:firmware_version;size:50" json:"firmware_version"`
 	IsAvailable       bool   `gorm:"default:true;index" json:"is_available"`
-	RelayStatus       string `gorm:"size:20;default:'ON'" json:"relay_status"` // ON, OFF
+	RelayStatus       string `gorm:"size:20;default:'OFF'" json:"relay_status"` // ON, OFF
 
 	Record      []Record      `gorm:"foreignKey:MeterID;" json:"record,omitempty"`
 	LineReading []LineReading `gorm:"foreignKey:MeterID;" json:"line_reading,omitempty"`
+}
+
+type MeterRegisterRequest struct {
+	MeterSerialNumber string `json:"meter_serial_number"`
+	MeterType         string `json:"meter_type"`
+	Manufacturer      string `json:"manufacturer"`
+	Model             string `json:"model"`
+	FirmwareVersion   string `json:"firmware_version"`
 }
 
 func (meter *Meter) Create() error {
@@ -53,6 +64,9 @@ func (meter *Meter) Delete() error {
 }
 
 func GetMeterBySerialNo(serialNo string) (*Meter, error) {
+	
+
+
 	var meter Meter
 	if err := db.DB.Where("meter_serial_number = ?", serialNo).First(&meter).Error; err != nil {
 		return nil, err
@@ -62,18 +76,29 @@ func GetMeterBySerialNo(serialNo string) (*Meter, error) {
 
 func GetMeterByID(id uuid.UUID) (*Meter, error) {
 	var meter Meter
-	if err := db.DB.Where("ID = ?", id).First(&meter).Error; err != nil {
+	if err := db.DB.Preload("Record").
+		Preload("LineReading").
+		Where("ID = ?", id).First(&meter).Error; err != nil {
 		return nil, err
 	}
 	return &meter, nil
 }
 
 func GetMeterIDBySerialNo(serialNo string) (uuid.UUID, error) {
+	
 	var meter Meter
 	if err := db.DB.Where("meter_serial_number = ?", serialNo).First(&meter).Error; err != nil {
 		return uuid.Nil, err
 	}
 	return meter.ID, nil
+}
+
+func GetSerialNumber(meterID uuid.UUID) (string, error) {
+	var meter Meter
+	if err := db.DB.Where("id = ?", meterID).First(&meter).Error; err != nil {
+		return "", err
+	}
+	return meter.MeterSerialNumber, nil
 }
 
 func GetAllMeter() ([]Meter, error) {
@@ -84,20 +109,20 @@ func GetAllMeter() ([]Meter, error) {
 	return meters, nil
 }
 
-func GetAllMeterWithDeleted() ([]Meter, error) {
-	var meters []Meter
-	if err := db.DB.Unscoped().Find(&meters).Error; err != nil {
-		return nil, err
-	}
-	return meters, nil
-}
-
 func CheckSerialNo(serialNo string) bool {
+	serialNo = normalizeMeterSerial(serialNo)
+	if serialNo == "" {
+		return false
+	}
 	var meter Meter
 	if err := db.DB.Where("meter_serial_number = ?", serialNo).First(&meter).Error; err != nil {
 		return false
 	}
 	return true
+}
+
+func normalizeMeterSerial(serialNo string) string {
+	return strings.TrimSpace(serialNo)
 }
 
 func IsMeterAvailable(meterID uuid.UUID) (bool, error) {
@@ -111,21 +136,13 @@ func IsMeterAvailable(meterID uuid.UUID) (bool, error) {
 	return true, nil
 }
 
-func PermanentMeterDelete(meterID uuid.UUID) error {
+func IsMeterAssigned(meterID uuid.UUID) (bool, error) {
 	var meter Meter
 	if err := db.DB.Where("id = ?", meterID).First(&meter).Error; err != nil {
-		return err
+		return false, err
 	}
-	if err := db.DB.Unscoped().Delete(&meter).Error; err != nil {
-		return err
+	if meter.IsAvailable == true {
+		return false, nil
 	}
-	return nil
-}
-
-func PermanentMetersDelete() error {
-	var meters []Meter
-	if err := db.DB.Unscoped().Delete(&meters).Error; err != nil {
-		return err
-	}
-	return nil
+	return true, nil
 }

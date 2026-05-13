@@ -32,13 +32,6 @@ func (record *Record) Create(tx *gorm.DB) error {
 	return nil
 }
 
-func (record *Record) Update() error {
-	if err := db.DB.Save(record).Error; err != nil {
-		return err
-	}
-	return nil
-}
-
 func (record *Record) Delete() error {
 	if err := db.DB.Delete(record).Error; err != nil {
 		return err

@@ -1,0 +1,7 @@
+./anomaly.go
+./line_reading_model.go
+./meter.go
+./record.go
+./report.go
+./user.go
+./wallet.go

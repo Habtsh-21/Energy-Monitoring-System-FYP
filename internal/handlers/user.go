@@ -3,12 +3,13 @@ package handlers
 import (
 	"encoding/json"
 	"energy-monitoring-system/internal/auth"
-	"energy-monitoring-system/internal/db"
 	"energy-monitoring-system/internal/models"
 	"energy-monitoring-system/internal/utils"
 	"net/http"
 
 )
+
+//"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzkyNDA4OTQsImlzcyI6ImVuZXJneS1tb25pdG9yaW5nLXN5c3RlbSIsInJvbGUiOiJ1c2VyIiwic3ViIjoiYWNjZXNzIiwidXNlcl9pZCI6ImRiYTYwNDk3LWM5ZDAtNGRkMC1hZWZjLWVkNjQyMjg2Njk3ZiJ9.5UlcnC0lLhs5EUNKB5SrYkqhC4tI68be4T_2KtWwrtI"
 
 
 type LoginRequest struct {
@@ -29,7 +30,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    user, err := models.GetUserByPhone(db.DB, req.PhoneNumber)
+    user, err := models.GetUserByPhone(req.PhoneNumber)
     if err != nil {
         http.Error(w, "Invalid credentials" + err.Error(), http.StatusUnauthorized)
         return

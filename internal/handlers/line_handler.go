@@ -2,19 +2,20 @@ package handlers
 
 import (
 	"encoding/json"
+	"energy-monitoring-system/internal/db"
 	"energy-monitoring-system/internal/models"
 	"energy-monitoring-system/internal/services"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 	"gorm.io/gorm"
 )
-
 
 type LineReadingResponse struct {
 	Reading   models.LineReading  `json:"reading"`
@@ -67,8 +68,6 @@ func LineReadingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	
-
 	userID, err := models.GetUserIdByMeterId(meterID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -78,114 +77,112 @@ func LineReadingHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to resolve meter owner", http.StatusInternalServerError)
 		return
 	}
-    
 
-	lr := models.LineReading{
-		MeterID:       meterID,
-		UserID:        userID,
-		PoleCurrentA:  req.PoleCurrentA,
-		PoleVoltageV:  req.PoleVoltageV,
-		MeterCurrentA: req.MeterCurrentA,
-		MeterVoltageV: req.MeterVoltageV,
-		RecordedAt:    recordedAt,
-		Note:          strings.TrimSpace(req.Note),
+	err = db.DB.Transaction(func(tx *gorm.DB) error {
+
+		lr := models.LineReading{
+			MeterID:       meterID,
+			UserID:        userID,
+			PoleCurrentA:  req.PoleCurrentA,
+			PoleVoltageV:  req.PoleVoltageV,
+			MeterCurrentA: req.MeterCurrentA,
+			MeterVoltageV: req.MeterVoltageV, 
+			PoleApparentPowerVA: req.PolePowerVA,
+			MeterApparentPowerVA: req.MeterPowerVA, 
+			DeltaCurrentA: req.PoleCurrentA - req.MeterCurrentA, 
+			DeltaVoltageV: req.PoleVoltageV - req.MeterVoltageV,
+			PowerLossPct: req.PowerLossPct,
+			RecordedAt:    recordedAt,
+			Note:          strings.TrimSpace(req.Note),
+		}
+		lr.CreatedAt = time.Now()
+		lr.UpdatedAt = time.Now()
+		
+ 
+		if err := lr.Create(tx); err != nil {
+			return fmt.Errorf("failed to save line reading: %w", err)
+		}
+		
+
+		// update wallet balance
+		if err := services.UpdateWallet(userID, req.ConsumedKwh, models.TxTypeUsageDebit, ""); err != nil {
+			return fmt.Errorf("failed to update wallet: %w", err)
+		}
+		
+		
+
+		detection := services.VerifyReading(&req)
+
+		// if anomaly
+		if detection.Verdict == services.VerdictConfirmed || detection.Verdict == services.VerdictSuspect {
+			anomaly := models.Anomaly{
+				ReadingID:      lr.ID,
+				Verdict:        string(detection.Verdict),
+				MeterClaim:     detection.MeterClaim,
+				OurDetection:   detection.OurDetection,
+				Conflict:       detection.Conflict,
+				ConflictReason: detection.ConflictReason,
+				Signals:        detection.Signals,
+				Reason:         detection.Reason,
+				DetectedAt:     lr.RecordedAt,
+			}
+			if err := anomaly.Create(tx); err != nil {
+				return fmt.Errorf("failed to save anomaly: %w", err)
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	lr.CreatedAt = time.Now()
-	lr.UpdatedAt = time.Now()
-	lr.ComputeDerived()
-
-	detection := services.DetectBypass(&lr)
-
-	
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(LineReadingResponse{
-		Reading:   lr,
-		Detection: detection,
-	})
+	
+
 }
 
+func GetMetersReadings(w http.ResponseWriter, r *http.Request) {
 
-
-func GetLineReadingsByMeterIDHandler(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-
-	meterIDStr := q.Get("meter_id")
-	if meterIDStr == "" {
-		http.Error(w, "Missing meter_id", http.StatusBadRequest)
-		return
-	}
-	meterID, err := uuid.Parse(meterIDStr)
+	readings, err := models.GetLineReadings()
 	if err != nil {
-		http.Error(w, "Invalid meter_id", http.StatusBadRequest)
-		return
-	}
-
-	start, end, limit, offset, ok := parseLineQueryParams(w, r)
-	if !ok {
-		return
-	}
-
-	readings, total, err := models.GetLineReadingsByMeterID(meterID, start, end, limit, offset)
-	if err != nil {
-		http.Error(w, "Failed to fetch readings", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(struct {
-		Readings []models.LineReading `json:"readings"`
-		Total    int64                `json:"total"`
-	}{Readings: readings, Total: total})
+		Readings []models.LineReadingsResponse `json:"readings"`
+	}{Readings: readings})
 }
 
-func parseLineQueryParams(w http.ResponseWriter, r *http.Request) (
-	start, end time.Time, limit, offset int, ok bool,
-) {
-	q := r.URL.Query()
+func GetReadingRecord(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	readingIDStr := vars["id"]
 
-	startStr := q.Get("start_time")
-	endStr := q.Get("end_time")
-	limitStr := q.Get("limit")
-	offsetStr := q.Get("offset")
-
-	if startStr == "" || endStr == "" {
-		http.Error(w, "Missing start_time or end_time", http.StatusBadRequest)
+	if readingIDStr == "" {
+		http.Error(w, "Missing reading ID", http.StatusBadRequest)
 		return
 	}
-	var err error
-	start, err = time.Parse(time.RFC3339, startStr)
+
+	readingID, err := uuid.Parse(readingIDStr)
 	if err != nil {
-		http.Error(w, "Invalid start_time (RFC3339 required)", http.StatusBadRequest)
+		http.Error(w, "Invalid reading ID", http.StatusBadRequest)
 		return
 	}
-	end, err = time.Parse(time.RFC3339, endStr)
+
+	reading, err := models.GetReadingRecord(readingID)
 	if err != nil {
-		http.Error(w, "Invalid end_time (RFC3339 required)", http.StatusBadRequest)
-		return
-	}
-	if end.Before(start) {
-		http.Error(w, "end_time must be after start_time", http.StatusBadRequest)
-		return
-	}
-
-	limit = 10
-	if limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
-			limit = l
-		}
-	}
-
-	if offsetStr != "" {
-		if off, err := strconv.Atoi(offsetStr); err == nil && off >= 0 {
-			offset = off
-		} else {
-			http.Error(w, "Invalid offset", http.StatusBadRequest)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			http.Error(w, "Reading not found", http.StatusNotFound)
 			return
 		}
+		http.Error(w, "Failed to fetch reading", http.StatusInternalServerError)
+		return
 	}
 
-	ok = true
-	return
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(reading)
 }

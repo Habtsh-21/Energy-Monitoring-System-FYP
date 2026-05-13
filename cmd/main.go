@@ -26,6 +26,7 @@ func main() {
 		&models.Record{},
 		&models.LineReading{},
 		&models.Anomaly{},
+		&models.Report{},
 		&models.Wallet{},
 		&models.Transaction{},
 		&models.TariffTier{},

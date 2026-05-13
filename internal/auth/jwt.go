@@ -11,9 +11,14 @@ import (
 )
 
 func GenerateJWT(user *models.User) (string, error) {
+	return GenerateJWTWithRole(user, "user")
+}
+
+func GenerateJWTWithRole(user *models.User, role string) (string, error) {
 	jwtSecret := []byte(os.Getenv("JWT_SECRET"))
 	claim := jwt.MapClaims{
 		"user_id": user.ID,
+		"role":    role,
 		"exp":     time.Now().Add(time.Hour * 24 * 7).Unix(),
 		"iss":     "energy-monitoring-system",
 		"sub":     "access",

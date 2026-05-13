@@ -1,0 +1,135 @@
+package admin_mgt
+
+import (
+	"encoding/json"
+	"energy-monitoring-system/internal/models"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/gorilla/mux"
+)
+
+func MeterRegisterHandler(w http.ResponseWriter, r *http.Request) {
+
+	var meter models.Meter
+	var req models.MeterRegisterRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	fmt.Println("--------------------------------------------------------------", req)
+	meter.MeterSerialNumber = req.MeterSerialNumber
+	meter.MeterType = req.MeterType
+	meter.Manufacturer = req.Manufacturer
+	meter.Model = req.Model
+	meter.FirmwareVersion = req.FirmwareVersion
+
+	if meter.MeterSerialNumber == "" || meter.MeterType == "" {
+		http.Error(w, "Incomplete meter information", http.StatusBadRequest)
+		return
+	}
+	meter.CreatedAt = time.Now()
+	meter.UpdatedAt = time.Now()
+
+	if models.CheckSerialNo(meter.MeterSerialNumber) {
+		http.Error(w, "Meter serial number already exists", http.StatusConflict)
+		return
+	}
+
+	if err := meter.Create(); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate key value violates unique constraint") {
+			http.Error(w, "Meter serial number already exists", http.StatusConflict)
+			return
+		}
+		http.Error(w, "Failed to create meter", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func GetAllMeterHandler(w http.ResponseWriter, r *http.Request) {
+
+	meters, err := models.GetAllMeter()
+	if err != nil {
+		http.Error(w, "Failed to get meters", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(meters)
+}
+
+func GetMeterHandler(w http.ResponseWriter, r *http.Request) {
+
+	vars := mux.Vars(r)
+	meterID := vars["id"]
+	if meterID == "" {
+		http.Error(w, "Meter ID is required", http.StatusBadRequest)
+		return
+	}
+
+	meter, err := models.GetMeterByID(uuid.Must(uuid.Parse(meterID)))
+	if err != nil {
+		http.Error(w, "Failed to get meter", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(meter)
+}
+
+func UpdateMeterHandler(w http.ResponseWriter, r *http.Request) {
+
+	var meter models.Meter
+
+	if err := json.NewDecoder(r.Body).Decode(&meter); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := meter.Update(); err != nil {
+		http.Error(w, "Failed to update meter", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func DeleteMeterHandler(w http.ResponseWriter, r *http.Request) {
+
+	vars := mux.Vars(r)
+	meterID := vars["id"]
+	if meterID == "" {
+		http.Error(w, "Meter ID is required", http.StatusBadRequest)
+		return
+	}
+
+	isAssigned, err := models.IsMeterAssigned(uuid.Must(uuid.Parse(meterID)))
+	if err != nil {
+		http.Error(w, "Failed to get meter", http.StatusInternalServerError)
+		return
+	}
+
+	if isAssigned {
+		http.Error(w, "Meter is assigned to a user", http.StatusBadRequest)
+		return
+	}
+
+	meter, err := models.GetMeterByID(uuid.Must(uuid.Parse(meterID)))
+	if err != nil {
+		http.Error(w, "Failed to get meter", http.StatusInternalServerError)
+		return
+	}
+
+	if err := meter.Delete(); err != nil {
+		http.Error(w, "Failed to delete meter", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}

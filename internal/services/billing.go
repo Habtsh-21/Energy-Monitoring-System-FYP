@@ -14,10 +14,10 @@ func round(v float64) float64 {
 	return math.Round(v*100) / 100
 }
 
-func TopUpWallet(userID uuid.UUID, amount float64, reference string)  error {
-	if amount <= 0 {
+func UpdateWallet(userID uuid.UUID, amountKwh float64, txType models.TransactionType,reference string)  error {
+	if amountKwh <= 0 {
 		return fmt.Errorf("amount must be greater than 0")
-	}
+	} 
 
 	return db.DB.Transaction(func(tx *gorm.DB) error {
 		var wallet models.Wallet
@@ -34,21 +34,20 @@ func TopUpWallet(userID uuid.UUID, amount float64, reference string)  error {
 		}
 
 
-		purchasedkwh ,err := models.CalculatePower(amount);
-		if err!= nil {
-			return err
-		}
-
 		balanceBefore := wallet.BalanceKwh
-		wallet.BalanceKwh = round(wallet.BalanceKwh + purchasedkwh)
+		if txType == models.TxTypeTopUp {
+			wallet.BalanceKwh = round(wallet.BalanceKwh + amountKwh)
+		} else {
+			wallet.BalanceKwh = round(wallet.BalanceKwh - amountKwh)
+		}
 		if err := wallet.Save(tx); err != nil {
 			return err
 		}
 
 		trx := models.Transaction{
 			WalletID:       wallet.ID,
-			Amount:         round(amount),
-			Type:           models.TxTypeTopUp,
+			Amount:         amountKwh,
+			Type:           txType,
 			Reference:      reference,
 			Note:           "Top-up",
 			BalanceBefore:  balanceBefore,
@@ -59,18 +58,7 @@ func TopUpWallet(userID uuid.UUID, amount float64, reference string)  error {
 			return err
 		}
 
-		if wallet.BalanceKwh > 0 {
-			var user models.User
-			if err := tx.Where("id = ?", userID).First(&user).Error; err == nil && user.MeterID != uuid.Nil {
-				var meter models.Meter
-				if err := tx.Where("id = ?", user.MeterID).First(&meter).Error; err == nil {
-					if meter.RelayStatus == "OFF" {
-						meter.RelayStatus = "ON"
-						tx.Save(&meter)
-					}
-				}
-			}
-		}
+		
 
 		return nil
 	})

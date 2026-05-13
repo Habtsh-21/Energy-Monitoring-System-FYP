@@ -3,7 +3,7 @@ package models
 import (
 	"energy-monitoring-system/internal/db"
 	"fmt"
-	"sort"
+	//"sort"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -93,111 +93,118 @@ func GetWalletByUserID(userID uuid.UUID) (*Wallet, error) {
 	return &wallet, err
 }
 
-func GetTransactionsByUserID(userID uuid.UUID) ([]Transaction, error) {
+func GetAllTransaction() ([]Transaction, error) {
 	var transactions []Transaction
-	err := db.DB.Where("user_id = ?", userID).Find(&transactions).Error
+	err := db.DB.Find(&transactions).Error
+	return transactions, err
+}
+
+
+func GetTransactionsByWalletID(walletID uuid.UUID) ([]Transaction, error) {
+	var transactions []Transaction
+	err := db.DB.Where("wallet_id = ?", walletID).Find(&transactions).Error
 	return transactions, err
 }
 
 
 
-func sortAndValidateTiers(tiers []TariffTier) ([]TariffTier, error) {
-	sort.Slice(tiers, func(i, j int) bool {
-		return tiers[i].Limit < tiers[j].Limit
-	})
+// func sortAndValidateTiers(tiers []TariffTier) ([]TariffTier, error) {
+// 	sort.Slice(tiers, func(i, j int) bool {
+// 		return tiers[i].Limit < tiers[j].Limit
+// 	})
 
-	for i := 1; i < len(tiers); i++ {
-		if tiers[i].Limit == tiers[i-1].Limit {
-			return nil, fmt.Errorf("duplicate tier limit %.2f with different rates (%.4f, %.4f)",
-				tiers[i].Limit, tiers[i-1].Rate, tiers[i].Rate)
-		}
-	}
+// 	for i := 1; i < len(tiers); i++ {
+// 		if tiers[i].Limit == tiers[i-1].Limit {
+// 			return nil, fmt.Errorf("duplicate tier limit %.2f with different rates (%.4f, %.4f)",
+// 				tiers[i].Limit, tiers[i-1].Rate, tiers[i].Rate)
+// 		}
+// 	}
 
-	return tiers, nil
-}
+// 	return tiers, nil
+// }
 
 
-func CalculateCost(kwh float64) (float64, error) {
-	if kwh <= 0 {
-		return 0, nil
-	}
+// func CalculateCost(kwh float64) (float64, error) {
+// 	if kwh <= 0 {
+// 		return 0, nil
+// 	}
 
-	raw, err := GetTariffTiers()
-	if err != nil {
-		return 0, err
-	}
+// 	raw, err := GetTariffTiers()
+// 	if err != nil {
+// 		return 0, err
+// 	}
 
-	tiers, err := sortAndValidateTiers(raw)
-	if err != nil {
-		return 0, err
-	}
+// 	tiers, err := sortAndValidateTiers(raw)
+// 	if err != nil {
+// 		return 0, err
+// 	}
 
-	var totalCost float64
-	consumed := 0.0
+// 	var totalCost float64
+// 	consumed := 0.0
 
-	for i, tier := range tiers {
-		if consumed >= kwh {
-			break
-		}
+// 	for i, tier := range tiers {
+// 		if consumed >= kwh {
+// 			break
+// 		}
 
-		usageInBand := min(kwh, tier.Limit) - consumed
-		if usageInBand > 0 {
-			totalCost += usageInBand * tier.Rate
-			consumed += usageInBand
-		}
+// 		usageInBand := min(kwh, tier.Limit) - consumed
+// 		if usageInBand > 0 {
+// 			totalCost += usageInBand * tier.Rate
+// 			consumed += usageInBand
+// 		}
 
-		if i == len(tiers)-1 && kwh > tier.Limit {
-			totalCost += (kwh - tier.Limit) * tier.Rate
-		}
-	}
+// 		if i == len(tiers)-1 && kwh > tier.Limit {
+// 			totalCost += (kwh - tier.Limit) * tier.Rate
+// 		}
+// 	}
 
-	return totalCost, nil
-}
+// 	return totalCost, nil
+// }
 
-func CalculatePower(amount float64) (float64, error) {
-	if amount <= 0 {
-		return 0, nil
-	}
+// func CalculatePower(amount float64) (float64, error) {
+// 	if amount <= 0 {
+// 		return 0, nil
+// 	}
 
-	raw, err := GetTariffTiers()
-	if err != nil {
-		return 0, err
-	}
+// 	raw, err := GetTariffTiers()
+// 	if err != nil {
+// 		return 0, err
+// 	}
 
-	tiers, err := sortAndValidateTiers(raw)
-	if err != nil {
-		return 0, err
-	}
+// 	tiers, err := sortAndValidateTiers(raw)
+// 	if err != nil {
+// 		return 0, err
+// 	}
 
-	var totalKWh float64
-	remaining := amount
+// 	var totalKWh float64
+// 	remaining := amount
 
-	for i, tier := range tiers {
-		if remaining <= 0 {
-			break
-		}
+// 	for i, tier := range tiers {
+// 		if remaining <= 0 {
+// 			break
+// 		}
 
-		bandFloor := 0.0
-		if i > 0 {
-			bandFloor = tiers[i-1].Limit
-		}
+// 		bandFloor := 0.0
+// 		if i > 0 {
+// 			bandFloor = tiers[i-1].Limit
+// 		}
 
-		bandCapacity := tier.Limit - bandFloor
-		bandCost := bandCapacity * tier.Rate
+// 		bandCapacity := tier.Limit - bandFloor
+// 		bandCost := bandCapacity * tier.Rate
 
-		if remaining >= bandCost {
-			totalKWh += bandCapacity
-			remaining -= bandCost
-		} else {
-			totalKWh += remaining / tier.Rate
-			remaining = 0
-		}
+// 		if remaining >= bandCost {
+// 			totalKWh += bandCapacity
+// 			remaining -= bandCost
+// 		} else {
+// 			totalKWh += remaining / tier.Rate
+// 			remaining = 0
+// 		}
 
-		if i == len(tiers)-1 && remaining > 0 {
-			totalKWh += remaining / tier.Rate
-			remaining = 0
-		}
-	}
+// 		if i == len(tiers)-1 && remaining > 0 {
+// 			totalKWh += remaining / tier.Rate
+// 			remaining = 0
+// 		}
+// 	}
 
-	return totalKWh, nil
-}
+// 	return totalKWh, nil
+// }
