@@ -53,13 +53,13 @@ func RegisterRoutes(r *mux.Router) {
 	admin.HandleFunc("/users/{id}/wallet/topup", handlers.AdminTopUpUserHandler).Methods("POST")
 	admin.HandleFunc("/users/{id}/wallet/transactions", handlers.GetUserTransactionsHandler).Methods("GET")
 	admin.HandleFunc("/transactions/{id}", handlers.GetTransactionHandler).Methods("GET")
-	// r.HandleFunc("/tariffs", handlers.AdminSetTariffHandler).Methods("POST")
-	// r.HandleFunc("/tariffs", handlers.AdminGetTariffsHandler).Methods("GET")
- 
+	admin.HandleFunc("/tariffs", handlers.AdminSetTariffHandler).Methods("POST")
+	admin.HandleFunc("/tariffs", handlers.AdminGetTariffsHandler).Methods("GET")
+
 	r.HandleFunc("/line-reading", handlers.LineReadingHandler).Methods("POST")
 	admin.HandleFunc("/line-reading/{id}", handlers.GetReadingRecord).Methods("GET")
 	admin.HandleFunc("/line-reading", handlers.GetMetersReadings).Methods("GET")
-	// r.HandleFunc("/calculate-cost", handlers.CalculateCostHandler).Methods("GET")
-	// r.HandleFunc("/calculate-kwh", handlers.CalculateKwhHandler).Methods("GET")
+
+	r.HandleFunc("/calculate", handlers.CalculatorHandler).Methods("POST")
 }
  

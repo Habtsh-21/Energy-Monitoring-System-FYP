@@ -8,6 +8,7 @@ import (
 	"energy-monitoring-system/internal/services"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -244,87 +245,91 @@ func GetTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(transaction)
 }
 
-// func AdminSetTariffHandler(w http.ResponseWriter, r *http.Request) {
-// 	var req SetTariffRequest
-// 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-// 		http.Error(w, "Invalid request body", http.StatusBadRequest)
-// 		return
-// 	}
+func AdminSetTariffHandler(w http.ResponseWriter, r *http.Request) {
+	var req SetTariffRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
 
-// 	if req.PricePerKWh <= 0 {
-// 		http.Error(w, "Price must be positive", http.StatusBadRequest)
-// 		return
-// 	}
+	if req.PricePerKWh <= 0 {
+		http.Error(w, "Price must be positive", http.StatusBadRequest)
+		return
+	}
 
-// 	if req.Limit <= 0 {
-// 		http.Error(w, "Limit must be positive", http.StatusBadRequest)
-// 		return
-// 	}
-// 	var tariff = models.TariffTier{
-// 	   Limit: req.Limit,
-// 	   Rate: req.PricePerKWh,
-// 	}
-// 	tariff.CreatedAt = time.Now()
-// 	tariff.UpdatedAt = time.Now()
-// 	if err := tariff.Set(); err != nil {
-// 		http.Error(w, "Failed to set tariff: "+err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-// 	w.WriteHeader(http.StatusOK)
-// 	w.Write([]byte("Tariff setted successfully"))
-// }
+	if req.Limit <= 0 {
+		http.Error(w, "Limit must be positive", http.StatusBadRequest)
+		return
+	}
+	var tariff = models.TariffTier{
+		Limit: req.Limit,
+		Rate:  req.PricePerKWh,
+	}
+	tariff.CreatedAt = time.Now()
+	tariff.UpdatedAt = time.Now()
+	if err := tariff.Set(); err != nil {
+		http.Error(w, "Failed to set tariff: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Tariff set successfully"})
+}
 
-// }
-// func AdminGetTariffsHandler(w http.ResponseWriter, r *http.Request){
+func AdminGetTariffsHandler(w http.ResponseWriter, r *http.Request) {
+	tariff, err := models.GetTariffTiers()
+	if err != nil {
+		http.Error(w, "Failed to fetch tariff: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(tariff)
+}
 
-// 	tariff, err := models.GetTariffTiers()
-// 	if err != nil {
-// 		http.Error(w, "Failed to fetch tariff: "+err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-// 	w.Header().Set("Content-Type", "application/json")
-// 	_ = json.NewEncoder(w).Encode(tariff)
-// }
+func CalculatorHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Unit   string  `json:"unit"` // "kwh" or "money"
+		Amount float64 `json:"amount"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
 
-// func CalculateCostHandler(w http.ResponseWriter, r *http.Request) {
-// 	var req CalculateCostRequest
-// 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-// 		http.Error(w, "Invalid request body", http.StatusBadRequest)
-// 		return
-// 	}
-// 	if req.Kwh <= 0 {
-// 		http.Error(w, "Kwh must be positive", http.StatusBadRequest)
-// 		return
-// 	}
-// 	cost, err := models.CalculateCost(req.Kwh)
-// 	if err != nil {
-// 		http.Error(w, "Failed to calculate cost: "+err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-// 	w.Header().Set("Content-Type", "application/json")
-// 	_ = json.NewEncoder(w).Encode(cost)
-// 	w.WriteHeader(http.StatusOK)
-// 	w.Write([]byte("Cost calculated successfully"))
-// }
+	if req.Amount <= 0 {
+		http.Error(w, "Amount must be positive", http.StatusBadRequest)
+		return
+	}
 
-// func CalculateKwhHandler(w http.ResponseWriter, r *http.Request) {
-// 	var req CalculateKwhRequest
-// 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-// 		http.Error(w, "Invalid request body", http.StatusBadRequest)
-// 		return
-// 	}
+	w.Header().Set("Content-Type", "application/json")
 
-// 	if req.Cost <= 0 {
-// 		http.Error(w, "Cost must be positive", http.StatusBadRequest)
-// 		return
-// 	}
-// 	kwh, err := models.CalculatePower(req.Cost)
-// 	if err != nil {
-// 		http.Error(w, "Failed to check kwh: "+err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-// 	w.Header().Set("Content-Type", "application/json")
-// 	_ = json.NewEncoder(w).Encode(kwh)
-// 	w.WriteHeader(http.StatusOK)
-// 	w.Write([]byte("Kwh checked successfully"))
-// }
+	switch req.Unit {
+	case "kwh":
+		cost, err := models.CalculateCost(req.Amount)
+		if err != nil {
+			http.Error(w, "Calculation failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"input_unit":   "kwh",
+			"input_amount": req.Amount,
+			"result_cost":  cost,
+		})
+
+	case "money":
+		kwh, err := models.CalculatePower(req.Amount)
+		if err != nil {
+			http.Error(w, "Calculation failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"input_unit":   "money",
+			"input_amount": req.Amount,
+			"result_kwh":   kwh,
+			"message":      "kWh calculated successfully",
+		})
+
+	default:
+		http.Error(w, "Invalid unit. Use 'kwh' or 'money'", http.StatusBadRequest)
+	}
+}
