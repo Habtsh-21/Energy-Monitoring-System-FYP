@@ -33,33 +33,30 @@ type User struct {
 	LastLogin   *time.Time `gorm:"column:last_login" json:"last_login"`
 	IsActive    bool       `gorm:"default:true" json:"is_active"`
 
-	MeterID uuid.UUID `gorm:"column:meter_id;type:uuid;uniqueIndex:idx_meter_id,where:deleted_at IS NULL" json:"meter_id"`
-    SerialNumber string `gorm:"-" json:"meter_serial_number,omitempty"`	
-	Meter       *Meter        `gorm:"foreignKey:MeterID" json:"meter,omitempty"`
-	Record      []Record      `gorm:"foreignKey:UserID" json:"records,omitempty"`
-	LineReading []LineReading `gorm:"foreignKey:UserID" json:"line_readings,omitempty"`
+	MeterID      uuid.UUID     `gorm:"column:meter_id;type:uuid;uniqueIndex:idx_meter_id,where:deleted_at IS NULL" json:"meter_id"`
+	SerialNumber string        `gorm:"-" json:"meter_serial_number,omitempty"`
+	Meter        *Meter        `gorm:"foreignKey:MeterID" json:"meter,omitempty"`
+	Record       []Record      `gorm:"foreignKey:UserID" json:"records,omitempty"`
+	LineReading  []LineReading `gorm:"foreignKey:UserID" json:"line_readings,omitempty"`
 }
 
-
-
 type UserRegisterRequest struct {
-    Password    string     `json:"password"`
-	FullName    string     `gorm:"column:full_name;size:255;not null" json:"full_name" validate:"required"`
-	PhoneNumber string     `gorm:"column:phone_number;size:20;uniqueIndex:idx_phone_number,where:deleted_at IS NULL" json:"phone_number"`
-	Address     Address    `gorm:"embedded" json:"address"`
-	SerialNumber string `gorm:"-" json:"meter_serial_number,omitempty"`
-
+	Password     string  `json:"password"`
+	FullName     string  `gorm:"column:full_name;size:255;not null" json:"full_name" validate:"required"`
+	PhoneNumber  string  `gorm:"column:phone_number;size:20;uniqueIndex:idx_phone_number,where:deleted_at IS NULL" json:"phone_number"`
+	Address      Address `gorm:"embedded" json:"address"`
+	SerialNumber string  `gorm:"-" json:"meter_serial_number,omitempty"`
 }
 
 type UsersGetResponse struct {
-	ID        uuid.UUID      `json:"id"`
-	FullName    string     `json:"full_name" `
-	PhoneNumber string     `json:"phone_number"`
-	Address     Address    `gorm:"embedded" json:"address"`
-	LastLogin   *time.Time `json:"last_login"`
-	IsActive    bool       `json:"is_active"`
-	MeterID uuid.UUID `json:"meter_id"`
-	MeterSerialNumber string `gorm:"-" json:"meter_serial_number,omitempty"`
+	ID                uuid.UUID  `json:"id"`
+	FullName          string     `json:"full_name" `
+	PhoneNumber       string     `json:"phone_number"`
+	Address           Address    `gorm:"embedded" json:"address"`
+	LastLogin         *time.Time `json:"last_login"`
+	IsActive          bool       `json:"is_active"`
+	MeterID           uuid.UUID  `json:"meter_id"`
+	MeterSerialNumber string     `gorm:"-" json:"meter_serial_number,omitempty"`
 }
 
 func (user *User) Create(tx *gorm.DB) error {
@@ -115,8 +112,7 @@ func GetUserByPhone(phone string) (*User, error) {
 	var user User
 	err := db.DB.Where("phone_number = ?", phone).First(&user).Error
 	return &user, err
-}  
-
+}
 
 func GetUserIdByMeterId(meterId uuid.UUID) (uuid.UUID, error) {
 	var user User
@@ -126,17 +122,22 @@ func GetUserIdByMeterId(meterId uuid.UUID) (uuid.UUID, error) {
 	return user.ID, nil
 }
 
-
+// GetUserByMeterID returns the user assigned to this meter (active or inactive).
+func GetUserByMeterID(meterID uuid.UUID) (*User, error) {
+	var user User
+	if err := db.DB.Where("meter_id = ?", meterID).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
 
 func GetAllUser() ([]User, error) {
 	var users []User
 	if err := db.DB.Find(&users).Error; err != nil {
 		return nil, err
-	} 
+	}
 	return users, nil
 }
-
-
 
 func CheckPhoneNumber(phoneNumber string) bool {
 	var user User
@@ -145,7 +146,6 @@ func CheckPhoneNumber(phoneNumber string) bool {
 	}
 	return true
 }
-
 
 func CheckUserId(id uuid.UUID) bool {
 	var user User
@@ -162,6 +162,3 @@ func CheckMeterAssignment(meterID string) bool {
 	}
 	return true
 }
-
-
- 

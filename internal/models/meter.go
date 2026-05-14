@@ -19,9 +19,17 @@ type Meter struct {
 	FirmwareVersion   string `gorm:"column:firmware_version;size:50" json:"firmware_version"`
 	IsAvailable       bool   `gorm:"default:true;index" json:"is_available"`
 	RelayStatus       string `gorm:"size:20;default:'OFF'" json:"relay_status"` // ON, OFF
+	AdminDisabled     bool   `gorm:"default:false" json:"admin_disabled"`        // admin hard-override: always OFF when true
 
 	Record      []Record      `gorm:"foreignKey:MeterID;" json:"record,omitempty"`
 	LineReading []LineReading `gorm:"foreignKey:MeterID;" json:"line_reading,omitempty"`
+}
+
+// MeterStatus holds only the fields the line handler needs to decide relay state.
+type MeterStatus struct {
+	ID            string
+	AdminDisabled bool
+	RelayStatus   string
 }
 
 type MeterRegisterRequest struct {
@@ -145,4 +153,47 @@ func IsMeterAssigned(meterID uuid.UUID) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+// GetMeterStatus returns a lightweight status record — no relation preloads.
+func GetMeterStatus(meterID uuid.UUID) (*MeterStatus, error) {
+	var m Meter
+	if err := db.DB.Select("id", "admin_disabled", "relay_status").
+		Where("id = ?", meterID).First(&m).Error; err != nil {
+		return nil, err
+	}
+	return &MeterStatus{
+		ID:            m.ID.String(),
+		AdminDisabled: m.AdminDisabled,
+		RelayStatus:   m.RelayStatus,
+	}, nil
+}
+
+func SetMeterStatus(tx *gorm.DB, meterID uuid.UUID, isDisabled bool) error {
+	if tx == nil {
+		tx = db.DB
+	}
+	relayStatus := "ON"
+	if isDisabled {
+		relayStatus = "OFF"
+	}
+	return tx.Model(&Meter{}).Where("id = ?", meterID).Updates(map[string]any{
+		"admin_disabled": isDisabled,
+		"relay_status":   relayStatus,
+	}).Error
+}
+
+ 
+func TurnOffMeter(tx *gorm.DB, meterID uuid.UUID) error {
+	if tx == nil {
+		tx = db.DB
+	}
+	return tx.Model(&Meter{}).Where("id = ?", meterID).Update("relay_status", "OFF").Error
+}
+
+func TurnOnMeter(tx *gorm.DB, meterID uuid.UUID) error {
+	if tx == nil {
+		tx = db.DB
+	}
+	return tx.Model(&Meter{}).Where("id = ?", meterID).Update("relay_status", "ON").Error
 }

@@ -92,6 +92,14 @@ func UpdateMeterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.EqualFold(meter.RelayStatus, "ON") && meter.ID != uuid.Nil {
+		u, err := models.GetUserByMeterID(meter.ID)
+		if err == nil && !u.IsActive {
+			http.Error(w, "Cannot set relay ON: assigned user account is inactive", http.StatusForbidden)
+			return
+		}
+	}
+
 	if err := meter.Update(); err != nil {
 		http.Error(w, "Failed to update meter", http.StatusInternalServerError)
 		return
@@ -132,4 +140,47 @@ func DeleteMeterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func AdminControlMeterHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	meterIDStr := vars["id"]
+	if meterIDStr == "" {
+		http.Error(w, "Meter ID is required", http.StatusBadRequest)
+		return
+	}
+	meterID, err := uuid.Parse(meterIDStr)
+	if err != nil {
+		http.Error(w, "Invalid meter ID", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Disabled bool `json:"disabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if !req.Disabled {
+		u, err := models.GetUserByMeterID(meterID)
+		if err == nil && !u.IsActive {
+			http.Error(w, "Cannot enable meter: assigned user account is inactive", http.StatusForbidden)
+			return
+		}
+	}
+
+	if err := models.SetMeterStatus(nil, meterID, req.Disabled); err != nil {
+		http.Error(w, "Failed to update meter control: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	msg := "Meter enabled by admin"
+	if req.Disabled {
+		msg = "Meter disabled by admin — relay forced OFF"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": msg})
 }

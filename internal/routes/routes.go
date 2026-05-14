@@ -34,11 +34,13 @@ func RegisterRoutes(r *mux.Router) {
 	admin.HandleFunc("/users", admin_mgt.GetAllUserHandler).Methods("GET")
 	admin.HandleFunc("/user/{id}", admin_mgt.UpdateUserHandler).Methods("PUT")
 	admin.HandleFunc("/user/{id}", admin_mgt.DeleteUserHandler).Methods("DELETE")
+	admin.HandleFunc("/user/{id}/control", admin_mgt.AdminControlUserHandler).Methods("PATCH")
 	admin.HandleFunc("/meter", admin_mgt.MeterRegisterHandler).Methods("POST")
 	admin.HandleFunc("/meter/{id}", admin_mgt.GetMeterHandler).Methods("GET")
 	admin.HandleFunc("/meter/{id}", admin_mgt.UpdateMeterHandler).Methods("PUT")
 	admin.HandleFunc("/meters", admin_mgt.GetAllMeterHandler).Methods("GET")
 	admin.HandleFunc("/meter/{id}", admin_mgt.DeleteMeterHandler).Methods("DELETE")
+	admin.HandleFunc("/meter/{id}/control", admin_mgt.AdminControlMeterHandler).Methods("PATCH")
 	admin.HandleFunc("/user/{id}/meter", admin_mgt.ChangeMeterHandler).Methods("PUT")
 	admin.HandleFunc("/records", admin_mgt.GetAllRecordHandler).Methods("GET")
 	admin.HandleFunc("/anomalies", adminHandler.GetAnomaliesHandler).Methods("GET")
@@ -47,12 +49,17 @@ func RegisterRoutes(r *mux.Router) {
 	admin.HandleFunc("/reports/{id}", handlers.GetReportByIDHandler).Methods("GET")
 	admin.HandleFunc("/reports/{id}/status", handlers.UpdateReportStatusHandler).Methods("PATCH")
 	admin.HandleFunc("/transactions", handlers.GetAllTransactionHandler).Methods("GET")
+	admin.HandleFunc("/users/{id}/wallet", handlers.GetUserWalletHandler).Methods("GET")
+	admin.HandleFunc("/users/{id}/wallet/topup", handlers.AdminTopUpUserHandler).Methods("POST")
+	admin.HandleFunc("/users/{id}/wallet/transactions", handlers.GetUserTransactionsHandler).Methods("GET")
+	admin.HandleFunc("/transactions/{id}", handlers.GetTransactionHandler).Methods("GET")
 	// r.HandleFunc("/tariffs", handlers.AdminSetTariffHandler).Methods("POST")
 	// r.HandleFunc("/tariffs", handlers.AdminGetTariffsHandler).Methods("GET")
-
-	admin.HandleFunc("/line-reading", handlers.LineReadingHandler).Methods("POST")
+ 
+	r.HandleFunc("/line-reading", handlers.LineReadingHandler).Methods("POST")
 	admin.HandleFunc("/line-reading/{id}", handlers.GetReadingRecord).Methods("GET")
 	admin.HandleFunc("/line-reading", handlers.GetMetersReadings).Methods("GET")
 	// r.HandleFunc("/calculate-cost", handlers.CalculateCostHandler).Methods("GET")
 	// r.HandleFunc("/calculate-kwh", handlers.CalculateKwhHandler).Methods("GET")
 }
+ 

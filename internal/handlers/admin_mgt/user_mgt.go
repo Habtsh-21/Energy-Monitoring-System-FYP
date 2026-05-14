@@ -344,3 +344,54 @@ func DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 }
+
+func AdminControlUserHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userId, err := uuid.Parse(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid or missing user ID", http.StatusBadRequest)
+		return
+	}
+	// Body: {"isActive": true|false} (key must be present)
+	var req struct {
+		IsActive *bool `json:"isActive"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.IsActive == nil {
+		http.Error(w, "Body must include isActive (bool)", http.StatusBadRequest)
+		return
+	}
+	isActive := *req.IsActive
+
+	err = db.DB.Transaction(func(tx *gorm.DB) error {
+		user, err := models.GetUser(userId)
+		if err != nil {
+			return err
+		}
+
+		if err := models.UpdateUserParameters(tx, userId, map[string]any{"is_active": isActive}); err != nil {
+			return err
+		}
+
+		if user.MeterID != uuid.Nil {
+			if err := models.SetMeterStatus(tx, user.MeterID, !isActive); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		http.Error(w, "Failed to disable user: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+
+
+

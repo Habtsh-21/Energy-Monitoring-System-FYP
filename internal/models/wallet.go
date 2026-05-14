@@ -32,13 +32,20 @@ type Transaction struct {
 	Type          TransactionType `gorm:"size:30;not null;index" json:"type"`
 	Reference     string          `gorm:"size:100" json:"reference"`
 	Note          string          `gorm:"size:255" json:"note"`
-	KWh           float64         `gorm:"not null;default:0" json:"kwh"`
+	KWh           float64         `gorm:"column:k_wh;not null;default:0" json:"kwh"`
 	BalanceBefore float64         `gorm:"not null;default:0" json:"balance_before"`
 	BalanceAfter  float64         `gorm:"not null;default:0" json:"balance_after"`
 
 	Wallet *Wallet `gorm:"foreignKey:WalletID" json:"-"`
 }
 
+type GetTransctionsResponse struct{
+	ID string `json:"id"`
+	Amount float64 `json:"amount"`
+	Type TransactionType `json:"type"`
+	KWh float64 `gorm:"column:k_wh" json:"kwh"`
+	CreatedAt string `json:"created_at"`
+}
 
 
 type TariffTier struct {
@@ -93,20 +100,27 @@ func GetWalletByUserID(userID uuid.UUID) (*Wallet, error) {
 	return &wallet, err
 }
 
-func GetAllTransaction() ([]Transaction, error) {
-	var transactions []Transaction
-	err := db.DB.Find(&transactions).Error
+func GetAllTransaction() ([]GetTransctionsResponse, error) {
+	var transactions []GetTransctionsResponse
+	err := db.DB.Model(&Transaction{}).Select("id, amount, type, k_wh, created_at").Scan(&transactions).Error
 	return transactions, err
 }
 
 
-func GetTransactionsByWalletID(walletID uuid.UUID) ([]Transaction, error) {
-	var transactions []Transaction
-	err := db.DB.Where("wallet_id = ?", walletID).Find(&transactions).Error
+func GetTransactionsByWalletID(walletID uuid.UUID) ([]GetTransctionsResponse, error) {
+	var transactions []GetTransctionsResponse
+	err := db.DB.Model(&Transaction{}).Where("wallet_id = ?", walletID).Select("id, amount, type, k_wh, created_at").Scan(&transactions).Error
 	return transactions, err
 }
 
+func GetTransactionByTransactionID(transactionID uuid.UUID) (*Transaction, error) {
+	var transaction Transaction
+	err := db.DB.Preload("Wallet").Where("id = ?", transactionID).First(&transaction).Error
+	return &transaction, err
+}
+ 
 
+ 
 
 // func sortAndValidateTiers(tiers []TariffTier) ([]TariffTier, error) {
 // 	sort.Slice(tiers, func(i, j int) bool {
