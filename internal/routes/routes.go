@@ -18,6 +18,7 @@ func RegisterRoutes(r *mux.Router) {
 	user.HandleFunc("/wallet/topup", handlers.WalletTopUpHandler).Methods("POST")
 	user.HandleFunc("/wallet/balance", handlers.GetWalletBalanceHandler).Methods("GET")
 	user.HandleFunc("/wallet/transactions", handlers.GetWalletTransactionsHandler).Methods("GET")
+	user.HandleFunc("/meter/control", handlers.OwnerControlMeterHandler).Methods("PATCH")
 	user.HandleFunc("/reports", handlers.CreateReportHandler).Methods("POST")
 	// user.HandleFunc("/reports", handlers.GetMyReportsHandler).Methods("GET")
 	// user.HandleFunc("/reports/{id}", handlers.GetMyReportByIDHandler).Methods("GET")

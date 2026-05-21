@@ -3,14 +3,13 @@ package handlers
 import (
 	"encoding/json"
 	"energy-monitoring-system/internal/auth"
+	"energy-monitoring-system/internal/auth/middleware"
 	"energy-monitoring-system/internal/models"
 	"energy-monitoring-system/internal/utils"
 	"net/http"
 
+	"github.com/google/uuid"
 )
-
-//"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzkyNDA4OTQsImlzcyI6ImVuZXJneS1tb25pdG9yaW5nLXN5c3RlbSIsInJvbGUiOiJ1c2VyIiwic3ViIjoiYWNjZXNzIiwidXNlcl9pZCI6ImRiYTYwNDk3LWM5ZDAtNGRkMC1hZWZjLWVkNjQyMjg2Njk3ZiJ9.5UlcnC0lLhs5EUNKB5SrYkqhC4tI68be4T_2KtWwrtI"
-
 
 type LoginRequest struct {
     PhoneNumber string `json:"phone_number" validate:"required"`
@@ -52,5 +51,47 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"token": token})
 }
 
+func OwnerControlMeterHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
+	user, err := models.GetUser(userID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
 
+	if user.MeterID == uuid.Nil {
+		http.Error(w, "No meter assigned to user", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Disabled bool `json:"disabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if !req.Disabled && !user.IsActive {
+		http.Error(w, "Cannot enable meter: user account is inactive", http.StatusForbidden)
+		return
+	}
+
+	if err := models.SetOwnerDisabled(nil, user.MeterID, req.Disabled); err != nil {
+		http.Error(w, "Failed to update meter control: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	msg := "Meter enabled by owner"
+	if req.Disabled {
+		msg = "Meter disabled by owner — relay forced OFF"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": msg})
+}

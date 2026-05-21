@@ -58,6 +58,8 @@ type LineReadingRequest struct {
 	IsConnected       bool    `json:"is_connected"`
 	BypassStatus      int  `json:"bypass_status"`
 	SystemLocked      bool    `json:"system_locked"`
+	UserInactive      bool    `json:"user_inactive"`
+	OwnerDisabled     bool    `json:"owner_disabled"`
 	RecordedAt        string  `json:"recorded_at"`
 	Note              string  `json:"note"`
 }
