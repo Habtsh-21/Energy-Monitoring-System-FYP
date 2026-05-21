@@ -4,7 +4,6 @@ import (
 	"energy-monitoring-system/internal/auth/middleware"
 	"energy-monitoring-system/internal/handlers"
 	"energy-monitoring-system/internal/handlers/admin_mgt"
-	"net/http"
 
 	"github.com/gorilla/mux"
 )
@@ -12,9 +11,7 @@ import (
 func RegisterRoutes(r *mux.Router) {
 
 
-	  r.Methods("OPTIONS").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        w.WriteHeader(http.StatusNoContent)
-    })
+
 	user := r.PathPrefix("/user").Subrouter()
 	user.Use(middleware.AuthMiddleware())
 	user.HandleFunc("/", handlers.UserHomeHandler).Methods("GET")

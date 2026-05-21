@@ -1,7 +1,6 @@
 package main
 
 import (
-	"energy-monitoring-system/internal/auth/middleware"
 	"energy-monitoring-system/internal/db"
 	"energy-monitoring-system/internal/models"
 	"energy-monitoring-system/internal/routes"
@@ -34,15 +33,12 @@ func main() {
 	)
 
 	r := mux.NewRouter()
-    routes.RegisterRoutes(r)
+	routes.RegisterRoutes(r)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
 
-    r.Use(middleware.CORSMiddleware)
-
-    port := os.Getenv("PORT")
-    if port == "" {
-        port = "8080"
-    }
-
-    log.Printf("Server starting on port %s", port)
-    log.Fatal(http.ListenAndServe(":"+port, r))
+	log.Printf("Server starting on port %s", port)
+	log.Fatal(http.ListenAndServe(":"+port, r))
 }
