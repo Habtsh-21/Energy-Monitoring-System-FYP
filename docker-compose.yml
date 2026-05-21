@@ -1,13 +1,16 @@
-version: '3.8'
-
 services:
   app:
     build: .
     ports:
       - "8080:8080"
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     env_file:
       - .env
     environment:
+      - HOST=0.0.0.0
+      - PORT=8080
       - DB_HOST=db
     depends_on:
       db:
@@ -17,12 +20,15 @@ services:
 
   db:
     image: postgres:15-alpine
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     environment:
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_DB=${DB_NAME}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
