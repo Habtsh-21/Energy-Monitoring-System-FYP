@@ -18,8 +18,9 @@ type Meter struct {
 	Model             string `gorm:"size:100" json:"model"`
 	FirmwareVersion   string `gorm:"column:firmware_version;size:50" json:"firmware_version"`
 	IsAvailable       bool   `gorm:"default:true;index" json:"is_available"`
-	RelayStatus       string `gorm:"size:20;default:'OFF'" json:"relay_status"` // ON, OFF
-	AdminDisabled     bool   `gorm:"default:false" json:"admin_disabled"`        // admin hard-override: always OFF when true
+	RelayStatus       string `gorm:"size:20;default:'ON'" json:"relay_status"` // ON, OFF
+	AdminDisabled     bool   `gorm:"default:false" json:"admin_disabled"`         // admin hard-override: always OFF when true
+	OwnerDisabled     bool   `gorm:"default:false" json:"owner_disabled"`          // owner soft-override: owner can disable their own meter
 
 	Record      []Record      `gorm:"foreignKey:MeterID;" json:"record,omitempty"`
 	LineReading []LineReading `gorm:"foreignKey:MeterID;" json:"line_reading,omitempty"`
@@ -29,6 +30,7 @@ type Meter struct {
 type MeterStatus struct {
 	ID            string
 	AdminDisabled bool
+	OwnerDisabled bool
 	RelayStatus   string
 }
 
@@ -158,13 +160,14 @@ func IsMeterAssigned(meterID uuid.UUID) (bool, error) {
 // GetMeterStatus returns a lightweight status record — no relation preloads.
 func GetMeterStatus(meterID uuid.UUID) (*MeterStatus, error) {
 	var m Meter
-	if err := db.DB.Select("id", "admin_disabled", "relay_status").
+	if err := db.DB.Select("id", "admin_disabled", "owner_disabled", "relay_status").
 		Where("id = ?", meterID).First(&m).Error; err != nil {
 		return nil, err
 	}
 	return &MeterStatus{
 		ID:            m.ID.String(),
 		AdminDisabled: m.AdminDisabled,
+		OwnerDisabled: m.OwnerDisabled,
 		RelayStatus:   m.RelayStatus,
 	}, nil
 }
@@ -183,7 +186,23 @@ func SetMeterStatus(tx *gorm.DB, meterID uuid.UUID, isDisabled bool) error {
 	}).Error
 }
 
- 
+// SetOwnerDisabled lets the meter owner enable or disable their own meter.
+// When disabled the relay is commanded OFF; when re-enabled it returns to ON.
+func SetOwnerDisabled(tx *gorm.DB, meterID uuid.UUID, disabled bool) error {
+	if tx == nil {
+		tx = db.DB
+	}
+	relayStatus := "ON"
+	if disabled {
+		relayStatus = "OFF"
+	}
+	return tx.Model(&Meter{}).Where("id = ?", meterID).Updates(map[string]any{
+		"owner_disabled": disabled,
+		"relay_status":   relayStatus,
+	}).Error
+}
+
+
 func TurnOffMeter(tx *gorm.DB, meterID uuid.UUID) error {
 	if tx == nil {
 		tx = db.DB

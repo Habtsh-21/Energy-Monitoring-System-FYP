@@ -56,7 +56,7 @@ type LineReadingRequest struct {
 	RemainingKwh      float64 `json:"remaining_kwh"`
 	PowerLossPct      float64 `json:"power_loss_pct"`
 	IsConnected       bool    `json:"is_connected"`
-	BypassStatus      string  `json:"bypass_status"`
+	BypassStatus      int  `json:"bypass_status"`
 	SystemLocked      bool    `json:"system_locked"`
 	RecordedAt        string  `json:"recorded_at"`
 	Note              string  `json:"note"`

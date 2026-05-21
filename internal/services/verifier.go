@@ -87,14 +87,14 @@ func toLineReading(req *models.LineReadingRequest) models.LineReading {
 
 // normaliseMeterClaim maps the raw string the meter sends to one of our
 // three canonical severity strings.
-func normaliseMeterClaim(status string) string {
+func normaliseMeterClaim(status int) string {
 	switch status {
-	case "confirmed", "CONFIRMED", "bypass_confirmed":
+	case  1:
 		return string(models.SeverityConfirmed)
-	case "suspect", "SUSPECT", "bypass_suspect":
-		return string(models.SeveritySuspect)
-	default:
+	case 0: 
 		return string(models.SeverityNormal)
+	default:
+		return string(models.SeveritySuspect)
 	}
 }
 

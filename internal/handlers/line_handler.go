@@ -17,11 +17,34 @@ import (
 	"gorm.io/gorm"
 )
 
+// LineReadingResponse is the single structured envelope returned for every
+// line-reading submission.  The HTTP status is always 200; callers must inspect
+// the Status field to determine the outcome.
+//
+// Status values and their meaning:
+//
+//	"ok"               – reading accepted, relay state unchanged / healthy
+//	"low_balance"      – reading accepted, balance < 1 kWh, relay still ON
+//	"no_balance"       – balance exhausted, relay commanded OFF
+//	"admin_disabled"   – meter administratively killed by admin, relay commanded OFF
+//	"owner_disabled"   – meter deliberately disabled by its owner, relay commanded OFF
+//	"inactive_account" – user account suspended by admin, relay commanded OFF
 type LineReadingResponse struct {
-	Status       string  `json:"status"`
-	RelayCommand string  `json:"relay_command"`
-	BalanceKwh   float64 `json:"balance_kwh"`
-	Message      string  `json:"message"`
+	Status         string  `json:"status"`
+	RelayCommand   string  `json:"relay_command"`
+	BalanceKwh     float64 `json:"balance_kwh"`
+	Message        string  `json:"message"`
+	AdminDisabled  bool    `json:"admin_disabled"`
+	OwnerDisabled  bool    `json:"owner_disabled"`
+	UserInactive   bool    `json:"user_inactive"`
+}
+
+// ok200 writes a 200 JSON response. All structured outcomes use this helper so
+// there is exactly one place that sets the status code for business responses.
+func ok200(w http.ResponseWriter, resp LineReadingResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func LineReadingHandler(w http.ResponseWriter, r *http.Request) {
@@ -78,28 +101,25 @@ func LineReadingHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := models.GetUserByMeterID(meterID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			http.Error(w, "No user assigned to this meter", http.StatusConflict)
+			http.Error(w, "No user assigned to this meter", http.StatusNotFound)
 			return
 		}
 		http.Error(w, "Failed to resolve meter owner", http.StatusInternalServerError)
 		return
 	}
-	userID := user.ID
-	userActive := user.IsActive
+
 	var resp LineReadingResponse
-	var httpStatus int
 
 	txErr := db.DB.Transaction(func(tx *gorm.DB) error {
 		meterStatus, err := models.GetMeterStatus(meterID)
 		if err != nil {
 			return fmt.Errorf("failed to fetch meter status: %w", err)
 		}
-		adminDisabled := meterStatus.AdminDisabled
 
 		if !req.IsConnected {
-			resp, httpStatus, err = handleMeterOff(tx, meterID, userID, userActive, req, recordedAt, adminDisabled)
+			resp, err = handleMeterOff(tx, meterID, user.ID, user.IsActive, req, recordedAt, meterStatus.AdminDisabled, meterStatus.OwnerDisabled)
 		} else {
-			resp, httpStatus, err = handleMeterOn(tx, meterID, userID, userActive, req, recordedAt, adminDisabled)
+			resp, err = handleMeterOn(tx, meterID, user.ID, user.IsActive, req, recordedAt, meterStatus.AdminDisabled, meterStatus.OwnerDisabled)
 		}
 		return err
 	})
@@ -109,14 +129,17 @@ func LineReadingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(httpStatus)
-	_ = json.NewEncoder(w).Encode(resp)
+	// All business outcomes share a single HTTP 200.  The Status field in the
+	// body is the authoritative signal for the aggregator.
+	ok200(w, resp)
 }
 
-func handleMeterOff(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req models.LineReadingRequest, recordedAt time.Time, adminDisabled bool) (LineReadingResponse, int, error) {
-	var resp LineReadingResponse
-	httpStatus := http.StatusOK
+// ── handleMeterOff ────────────────────────────────────────────────────────────
+// Called when the meter reports is_connected = false.
+// We still check for bypass (current flowing while relay is off) and record it,
+// then return the appropriate status so the aggregator knows why the relay is off.
+
+func handleMeterOff(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req models.LineReadingRequest, recordedAt time.Time, adminDisabled, ownerDisabled bool) (LineReadingResponse, error) {
 
 	detection := services.VerifyReading(&req)
 	isBypassed := detection.Verdict == services.VerdictConfirmed || detection.Verdict == services.VerdictSuspect
@@ -124,11 +147,10 @@ func handleMeterOff(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req
 	if isBypassed {
 		lr, err := createLineReading(tx, meterID, userID, req, recordedAt)
 		if err != nil {
-			return resp, httpStatus, fmt.Errorf("failed to save line reading: %w", err)
+			return LineReadingResponse{}, fmt.Errorf("failed to save line reading: %w", err)
 		}
-
 		if err := createAnomaly(tx, lr.ID, detection, recordedAt); err != nil {
-			return resp, httpStatus, fmt.Errorf("failed to save anomaly: %w", err)
+			return LineReadingResponse{}, fmt.Errorf("failed to save anomaly: %w", err)
 		}
 	}
 
@@ -138,76 +160,107 @@ func handleMeterOff(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req
 		bal = wallet.BalanceKwh
 	}
 
-	statusMsg := "ok"
-	msg := "Meter is OFF."
-	if adminDisabled {
-		statusMsg = "admin_disabled"
-		msg = "Meter is administratively disabled. Contact your service provider."
-		httpStatus = http.StatusForbidden
-	} else if bal <= 0 {
-		statusMsg = "no_balance"
-		msg = "Balance exhausted. Meter is disconnected."
-		httpStatus = http.StatusPaymentRequired
-	} else if !userActive {
-		statusMsg = "inactive_account"
-		msg = "User account is inactive. Relay must stay off."
-		httpStatus = http.StatusForbidden
-	}
+	// Priority: admin kill > owner disabled > balance check > account status > normal off.
+	switch {
+	case adminDisabled:
+		return LineReadingResponse{
+			Status:        "admin_disabled",
+			RelayCommand:  "OFF",
+			BalanceKwh:    bal,
+			Message:       "Meter is administratively disabled. Contact your service provider.",
+			AdminDisabled: true,
+		}, nil
 
-	resp = LineReadingResponse{
-		Status:       statusMsg,
-		RelayCommand: "OFF",
-		BalanceKwh:   bal,
-		Message:      msg,
-	}
+	case ownerDisabled:
+		return LineReadingResponse{
+			Status:        "owner_disabled",
+			RelayCommand:  "OFF",
+			BalanceKwh:    bal,
+			Message:       "Meter has been disabled by the owner.",
+			OwnerDisabled: true,
+		}, nil
 
-	return resp, httpStatus, nil
+	case bal <= 0:
+		return LineReadingResponse{
+			Status:       "no_balance",
+			RelayCommand: "OFF",
+			BalanceKwh:   0,
+			Message:      "Balance exhausted. Meter is disconnected.",
+		}, nil
+
+	case !userActive:
+		return LineReadingResponse{
+			Status:       "inactive_account",
+			RelayCommand: "OFF",
+			BalanceKwh:   bal,
+			Message:      "User account is inactive. Relay must stay off.",
+			UserInactive: true,
+		}, nil
+
+	default:
+		return LineReadingResponse{
+			Status:       "ok",
+			RelayCommand: "OFF",
+			BalanceKwh:   bal,
+			Message:      "Meter is OFF.",
+		}, nil
+	}
 }
 
-func handleMeterOn(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req models.LineReadingRequest, recordedAt time.Time, adminDisabled bool) (LineReadingResponse, int, error) {
-	var resp LineReadingResponse
-	httpStatus := http.StatusOK
+// ── handleMeterOn ─────────────────────────────────────────────────────────────
+// Called when the meter reports is_connected = true.
+// Saves the reading, debits the wallet, then evaluates override conditions
+// (admin kill, inactive account) that must force the relay off regardless.
+
+func handleMeterOn(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req models.LineReadingRequest, recordedAt time.Time, adminDisabled bool) (LineReadingResponse, error) {
 
 	lr, err := createLineReading(tx, meterID, userID, req, recordedAt)
 	if err != nil {
-		return resp, httpStatus, fmt.Errorf("failed to save line reading: %w", err)
+		return LineReadingResponse{}, fmt.Errorf("failed to save line reading: %w", err)
 	}
+
 	detection := services.VerifyReading(&req)
 	if detection.Verdict == services.VerdictConfirmed || detection.Verdict == services.VerdictSuspect {
 		if err := createAnomaly(tx, lr.ID, detection, recordedAt); err != nil {
-			return resp, httpStatus, fmt.Errorf("failed to save anomaly: %w", err)
+			return LineReadingResponse{}, fmt.Errorf("failed to save anomaly: %w", err)
 		}
 	}
 
+	// ── Wallet debit ──────────────────────────────────────────────────────────
+
+	var resp LineReadingResponse
+	wallet, err := models.GetWalletByUserID(userID)
+    if err != nil {
+		return LineReadingResponse{}, fmt.Errorf("failed to fetch wallet: %w", err)
+	}
 	if req.ConsumedKwh > 0 {
 		debitErr := services.DebitWallet(tx, userID, req.ConsumedKwh, lr.ID.String())
 
-		if errors.Is(debitErr, services.ErrInsufficientBalance) {
+		switch {
+		case errors.Is(debitErr, services.ErrInsufficientBalance):
 			if err := models.TurnOffMeter(tx, meterID); err != nil {
-				return resp, httpStatus, fmt.Errorf("failed to turn off meter: %w", err)
+				return LineReadingResponse{}, fmt.Errorf("failed to turn off meter: %w", err)
 			}
-			resp = LineReadingResponse{
+			return LineReadingResponse{
 				Status:       "no_balance",
 				RelayCommand: "OFF",
-				BalanceKwh:   0,
+				BalanceKwh:    wallet.BalanceKwh,
 				Message:      "Balance exhausted. Meter has been disconnected.",
-			}
-			httpStatus = http.StatusPaymentRequired
-		} else if debitErr != nil {
-			return resp, httpStatus, fmt.Errorf("wallet debit failed: %w", debitErr)
-		} else {
-			wallet, err := models.GetWalletByUserID(userID)
-			if err != nil {
-				return resp, httpStatus, fmt.Errorf("failed to fetch wallet: %w", err)
-			}
+			}, nil
 
+		case debitErr != nil:
+			return LineReadingResponse{}, fmt.Errorf("wallet debit failed: %w", debitErr)
+
+		default:
+		
+			
 			const lowBalanceThreshold = 1.0
 			if wallet.BalanceKwh < lowBalanceThreshold {
 				resp = LineReadingResponse{
 					Status:       "low_balance",
 					RelayCommand: "ON",
 					BalanceKwh:   wallet.BalanceKwh,
-					Message:      fmt.Sprintf("Low balance: %.4f kWh remaining. Please top up soon.", wallet.BalanceKwh),
+					Message:      "Low balance",
 				}
 			} else {
 				resp = LineReadingResponse{
@@ -217,49 +270,44 @@ func handleMeterOn(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req 
 					Message:      "Reading recorded.",
 				}
 			}
-			httpStatus = http.StatusCreated
 		}
 	} else {
-
 		resp = LineReadingResponse{
 			Status:       "ok",
 			RelayCommand: "ON",
+            BalanceKwh:   wallet.BalanceKwh,
 			Message:      "Reading recorded. No energy consumed.",
 		}
-		httpStatus = http.StatusCreated
 	}
 
-	if adminDisabled {
-		if err := models.TurnOffMeter(tx, meterID); err != nil {
-			return resp, httpStatus, fmt.Errorf("failed to enforce admin relay OFF: %w", err)
-		}
-		resp = LineReadingResponse{
+	// ── Override checks (evaluated after debit so usage is always recorded) ──
+	// Priority: admin kill > inactive account.  Both force the relay OFF
+	// regardless of what the debit path decided above.
+
+	switch {
+	case adminDisabled:
+		
+		return LineReadingResponse{
 			Status:       "admin_disabled",
 			RelayCommand: "OFF",
-			BalanceKwh:   resp.BalanceKwh,
+			BalanceKwh:    wallet.BalanceKwh,
 			Message:      "Meter is administratively disabled. Contact your service provider.",
-		}
-		httpStatus = http.StatusForbidden
-	} else if !userActive {
-		// Usage was still debited above; inactive accounts must not energize the relay.
-		if err := models.TurnOffMeter(tx, meterID); err != nil {
-			return resp, httpStatus, fmt.Errorf("failed to enforce inactive relay OFF: %w", err)
-		}
-		bal := resp.BalanceKwh
-		var w models.Wallet
-		if err := tx.Where("user_id = ?", userID).First(&w).Error; err == nil {
-			bal = w.BalanceKwh
-		}
-		resp = LineReadingResponse{
+		}, nil
+
+	case !userActive:
+		
+		return LineReadingResponse{
 			Status:       "inactive_account",
 			RelayCommand: "OFF",
-			BalanceKwh:   bal,
+			BalanceKwh:  wallet.BalanceKwh,
 			Message:      "Account inactive: usage was debited from the wallet; relay remains off.",
-		}
+		}, nil
 	}
 
-	return resp, httpStatus, nil
+	return resp, nil
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 func createLineReading(tx *gorm.DB, meterID, userID uuid.UUID, req models.LineReadingRequest, recordedAt time.Time) (*models.LineReading, error) {
 	lr := models.LineReading{
