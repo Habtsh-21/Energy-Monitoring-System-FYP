@@ -72,6 +72,17 @@ func GetTariffTiers() ([]TariffTier, error) {
 	return tiers, nil
 }
 
+func DeleteTariffTierByID(id uuid.UUID) error {
+	tx := db.DB.Where("id = ?", id).Delete(&TariffTier{})
+	if tx.Error != nil {
+		return tx.Error
+	}
+	if tx.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 
 
 

@@ -3,6 +3,7 @@ package admin_mgt
 import (
 	"encoding/json"
 	"energy-monitoring-system/internal/models"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -172,6 +173,10 @@ func AdminControlMeterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := models.SetMeterStatus(nil, meterID, req.Disabled); err != nil {
+		if errors.Is(err, models.ErrMeterDisabledByOwner) {
+			http.Error(w, "Cannot enable meter: disabled by owner", http.StatusForbidden)
+			return
+		}
 		http.Error(w, "Failed to update meter control: "+err.Error(), http.StatusInternalServerError)
 		return
 	}

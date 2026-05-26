@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"energy-monitoring-system/internal/auth/middleware"
 	"energy-monitoring-system/internal/db"
 	"energy-monitoring-system/internal/models"
 	"energy-monitoring-system/internal/services"
@@ -435,4 +436,23 @@ func GetReadingRecord(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(reading)
+}
+
+
+
+func GetUserReadingHandler(w http.ResponseWriter, r *http.Request){
+	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	reading, err := models.GetUserReading(userID);
+	if(err != nil) {
+		http.Error(w, "Failed to fetch reading", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(reading)
+
 }

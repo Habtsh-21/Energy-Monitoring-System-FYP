@@ -14,11 +14,12 @@ func RegisterRoutes(r *mux.Router) {
 
 	user := r.PathPrefix("/user").Subrouter()
 	user.Use(middleware.AuthMiddleware())
-	user.HandleFunc("/", handlers.UserHomeHandler).Methods("GET")
+	user.HandleFunc("/", handlers.UserInfoHandler).Methods("GET")
 	r.HandleFunc("/login", handlers.LoginHandler).Methods("POST")
-
+   
 	user.HandleFunc("/wallet/topup", handlers.WalletTopUpHandler).Methods("POST")
 	user.HandleFunc("/wallet/balance", handlers.GetWalletBalanceHandler).Methods("GET")
+	user.HandleFunc("/line_reading",handlers.GetUserReadingHandler).Methods("GET")
 	user.HandleFunc("/wallet/transactions", handlers.GetWalletTransactionsHandler).Methods("GET")
 	user.HandleFunc("/meter/control", handlers.OwnerControlMeterHandler).Methods("PATCH")
 	user.HandleFunc("/reports", handlers.CreateReportHandler).Methods("POST")
@@ -57,7 +58,8 @@ func RegisterRoutes(r *mux.Router) {
 	admin.HandleFunc("/users/{id}/wallet/transactions", handlers.GetUserTransactionsHandler).Methods("GET")
 	admin.HandleFunc("/transactions/{id}", handlers.GetTransactionHandler).Methods("GET")
 	admin.HandleFunc("/tariffs", handlers.AdminSetTariffHandler).Methods("POST")
-	admin.HandleFunc("/tariffs", handlers.AdminGetTariffsHandler).Methods("GET")
+	admin.HandleFunc("/tariffs/{id}", handlers.AdminDeleteTariffHandler).Methods("DELETE")
+	r.HandleFunc("/tariffs", handlers.AdminGetTariffsHandler).Methods("GET")
 
 	r.HandleFunc("/line-reading", handlers.LineReadingHandler).Methods("POST")
 	admin.HandleFunc("/line-reading/{id}", handlers.GetReadingRecord).Methods("GET")

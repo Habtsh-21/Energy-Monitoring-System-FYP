@@ -129,5 +129,15 @@ func GetLineReadings() ([]LineReadingsResponse,error) {
 }
 
 
+func GetUserReading( userId uuid.UUID)([]LineReadingsResponse,error){
+      readings := make([]LineReadingsResponse, 0)
+      err := 	db.DB.Model(&LineReading{}).Where("user_id = ?", userId).Select("id","meter_id", "user_id", "pole_apparent_power_va", "meter_apparent_power_va", "power_loss_pct").
+		Scan(&readings).Error
+	if err != nil {
+		return nil,err
+	}
+	return readings,nil
+}
+
 
  

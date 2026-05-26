@@ -17,9 +17,21 @@ type LoginRequest struct {
 }
 
 
-func UserHomeHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Welcome to Energy Monitoring System"))
+func UserInfoHandler(w http.ResponseWriter, r *http.Request) {
+
+    userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	reading, err := models.GetUser(userID);
+	if(err != nil) {
+		http.Error(w, "Failed to fetch reading", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(reading)
 }
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
@@ -28,7 +40,6 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "Invalid request body", http.StatusBadRequest)
         return
     }
-
     user, err := models.GetUserByPhone(req.PhoneNumber)
     if err != nil {
         http.Error(w, "Invalid credentials" + err.Error(), http.StatusUnauthorized)
@@ -68,6 +79,13 @@ func OwnerControlMeterHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "No meter assigned to user", http.StatusBadRequest)
 		return
 	}
+	
+	meter, err  := models.GetMeterByID(user.MeterID)
+	if err != nil {
+		http.Error(w, "Meter not found", http.StatusNotFound)
+		return
+	}
+
 
 	var req struct {
 		Disabled bool `json:"disabled"`
@@ -82,7 +100,14 @@ func OwnerControlMeterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	
+	if meter.AdminDisabled && !req.Disabled {
+		http.Error(w, "Cannot enable meter: admin desabled the meter", http.StatusForbidden)
+		return
+	}
+
 	if err := models.SetOwnerDisabled(nil, user.MeterID, req.Disabled); err != nil {
+		
 		http.Error(w, "Failed to update meter control: "+err.Error(), http.StatusInternalServerError)
 		return
 	}

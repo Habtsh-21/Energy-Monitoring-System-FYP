@@ -2,13 +2,19 @@ package models
 
 import (
 	"energy-monitoring-system/internal/db"
-	
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
+var (
+	ErrMeterDisabledByAdmin = errors.New("meter disabled by admin")
+	ErrMeterDisabledByOwner = errors.New("meter disabled by owner")
+)
 
 type Meter struct {
 	BaseModel
@@ -172,18 +178,40 @@ func GetMeterStatus(meterID uuid.UUID) (*MeterStatus, error) {
 	}, nil
 }
 
+func desiredRelayStatus(adminDisabled, ownerDisabled bool) string {
+	if adminDisabled || ownerDisabled {
+		return "OFF"
+	}
+	return "ON"
+}
+
 func SetMeterStatus(tx *gorm.DB, meterID uuid.UUID, isDisabled bool) error {
 	if tx == nil {
 		tx = db.DB
 	}
-	relayStatus := "ON"
-	if isDisabled {
-		relayStatus = "OFF"
-	}
-	return tx.Model(&Meter{}).Where("id = ?", meterID).Updates(map[string]any{
-		"admin_disabled": isDisabled,
-		"relay_status":   relayStatus,
-	}).Error
+	return tx.Transaction(func(innerTx *gorm.DB) error {
+		var m Meter
+		if err := innerTx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Select("id", "admin_disabled", "owner_disabled").
+			Where("id = ?", meterID).
+			First(&m).Error; err != nil {
+			return err
+		}
+
+		// Enabling by admin is blocked if the owner has disabled it.
+		if !isDisabled && m.OwnerDisabled {
+			return ErrMeterDisabledByOwner
+		}
+
+		relayStatus := desiredRelayStatus(isDisabled, m.OwnerDisabled)
+		if err := innerTx.Model(&Meter{}).Where("id = ?", meterID).Updates(map[string]any{
+			"admin_disabled": isDisabled,
+			"relay_status":   relayStatus,
+		}).Error; err != nil {
+			return fmt.Errorf("update meter status: %w", err)
+		}
+		return nil
+	})
 }
 
 // SetOwnerDisabled lets the meter owner enable or disable their own meter.
@@ -192,14 +220,29 @@ func SetOwnerDisabled(tx *gorm.DB, meterID uuid.UUID, disabled bool) error {
 	if tx == nil {
 		tx = db.DB
 	}
-	relayStatus := "ON"
-	if disabled {
-		relayStatus = "OFF"
-	}
-	return tx.Model(&Meter{}).Where("id = ?", meterID).Updates(map[string]any{
-		"owner_disabled": disabled,
-		"relay_status":   relayStatus,
-	}).Error
+	return tx.Transaction(func(innerTx *gorm.DB) error {
+		var m Meter
+		if err := innerTx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Select("id", "admin_disabled", "owner_disabled").
+			Where("id = ?", meterID).
+			First(&m).Error; err != nil {
+			return err
+		}
+
+		// Enabling by owner is blocked if the admin has disabled it.
+		if !disabled && m.AdminDisabled {
+			return ErrMeterDisabledByAdmin
+		}
+
+		relayStatus := desiredRelayStatus(m.AdminDisabled, disabled)
+		if err := innerTx.Model(&Meter{}).Where("id = ?", meterID).Updates(map[string]any{
+			"owner_disabled": disabled,
+			"relay_status":   relayStatus,
+		}).Error; err != nil {
+			return fmt.Errorf("update owner meter control: %w", err)
+		}
+		return nil
+	})
 }
 
 

@@ -7,6 +7,7 @@ import (
 	"energy-monitoring-system/internal/models"
 	"energy-monitoring-system/internal/services"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -138,17 +139,9 @@ func GetAllTransactionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetWalletTransactionsHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	userIDStr := vars["id"]
-
-	if userIDStr == "" {
-		http.Error(w, "Missing user ID", http.StatusBadRequest)
-		return
-	}
-
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -286,6 +279,33 @@ func AdminGetTariffsHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(tariff)
 }
 
+func AdminDeleteTariffHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+	if idStr == "" {
+		http.Error(w, "Missing tariff ID", http.StatusBadRequest)
+		return
+	}
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, "Invalid tariff ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := models.DeleteTariffTierByID(id); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			http.Error(w, "Tariff not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to delete tariff: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Tariff deleted successfully"})
+}
+
 func CalculatorHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Unit   string  `json:"unit"` // "kwh" or "money"
@@ -295,12 +315,12 @@ func CalculatorHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-
+  
 	if req.Amount <= 0 {
 		http.Error(w, "Amount must be positive", http.StatusBadRequest)
 		return
 	}
-
+  
 	w.Header().Set("Content-Type", "application/json")
 
 	switch req.Unit {
@@ -313,11 +333,12 @@ func CalculatorHandler(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"input_unit":   "kwh",
 			"input_amount": req.Amount,
-			"result_cost":  cost,
+			"result":  cost,
 		})
 
 	case "money":
 		kwh, err := models.CalculatePower(req.Amount)
+		fmt.Println(kwh) 
 		if err != nil {
 			http.Error(w, "Calculation failed: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -325,8 +346,7 @@ func CalculatorHandler(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"input_unit":   "money",
 			"input_amount": req.Amount,
-			"result_kwh":   kwh,
-			"message":      "kWh calculated successfully",
+			"result":   kwh,
 		})
 
 	default:
