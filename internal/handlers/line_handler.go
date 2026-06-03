@@ -29,7 +29,6 @@ import (
 //	"no_balance"       – balance exhausted, relay commanded OFF
 //	"admin_disabled"   – meter administratively killed by admin, relay commanded OFF
 //	"owner_disabled"   – meter deliberately disabled by its owner, relay commanded OFF
-//	"inactive_account" – user account suspended by admin, relay commanded OFF
 type LineReadingResponse struct {
 	Status         string  `json:"status"`
 	RelayCommand   string  `json:"relay_command"`
@@ -37,7 +36,6 @@ type LineReadingResponse struct {
 	Message        string  `json:"message"`
 	AdminDisabled  bool    `json:"admin_disabled"`
 	OwnerDisabled  bool    `json:"owner_disabled"`
-	UserInactive   bool    `json:"user_inactive"`
 }
 
 // ok200 writes a 200 JSON response. All structured outcomes use this helper so
@@ -117,20 +115,12 @@ func LineReadingHandler(w http.ResponseWriter, r *http.Request) {
 			return fmt.Errorf("failed to fetch meter status: %w", err)
 		}
 
-		if req.OwnerDisabled != meterStatus.OwnerDisabled {
-			if err := models.SetOwnerDisabled(tx, meterID, req.OwnerDisabled); err != nil {
-				return fmt.Errorf("failed to sync owner_disabled status to db: %w", err)
-			}
-			meterStatus.OwnerDisabled = req.OwnerDisabled
-		}
-
-		ownerDisabled := meterStatus.OwnerDisabled || req.OwnerDisabled
-		userActive := user.IsActive && !req.UserInactive
+		ownerDisabled := meterStatus.OwnerDisabled
 
 		if !req.IsConnected {
-			resp, err = handleMeterOff(tx, meterID, user.ID, userActive, req, recordedAt, meterStatus.AdminDisabled, ownerDisabled)
+			resp, err = handleMeterOff(tx, meterID, user.ID, req, recordedAt, meterStatus.AdminDisabled, ownerDisabled)
 		} else {
-			resp, err = handleMeterOn(tx, meterID, user.ID, userActive, req, recordedAt, meterStatus.AdminDisabled, ownerDisabled)
+			resp, err = handleMeterOn(tx, meterID, user.ID, req, recordedAt, meterStatus.AdminDisabled, ownerDisabled)
 		}
 		return err
 	})
@@ -150,7 +140,7 @@ func LineReadingHandler(w http.ResponseWriter, r *http.Request) {
 // We still check for bypass (current flowing while relay is off) and record it,
 // then return the appropriate status so the aggregator knows why the relay is off.
 
-func handleMeterOff(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req models.LineReadingRequest, recordedAt time.Time, adminDisabled, ownerDisabled bool) (LineReadingResponse, error) {
+func handleMeterOff(tx *gorm.DB, meterID, userID uuid.UUID, req models.LineReadingRequest, recordedAt time.Time, adminDisabled, ownerDisabled bool) (LineReadingResponse, error) {
 
 	detection := services.VerifyReading(&req)
 	isBypassed := detection.Verdict == services.VerdictConfirmed || detection.Verdict == services.VerdictSuspect
@@ -181,7 +171,7 @@ func handleMeterOff(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req
 			Message:       "Meter is administratively disabled. Contact your service provider.",
 			AdminDisabled: true,
 			OwnerDisabled: ownerDisabled,
-			UserInactive:  !userActive,
+			
 		}, nil
 
 	case ownerDisabled:
@@ -192,7 +182,7 @@ func handleMeterOff(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req
 			Message:       "Meter has been disabled by the owner.",
 			AdminDisabled: adminDisabled,
 			OwnerDisabled: true,
-			UserInactive:  !userActive,
+			
 		}, nil
 
 	case bal <= 0:
@@ -203,19 +193,9 @@ func handleMeterOff(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req
 			Message:       "Balance exhausted. Meter is disconnected.",
 			AdminDisabled: adminDisabled,
 			OwnerDisabled: ownerDisabled,
-			UserInactive:  !userActive,
 		}, nil
 
-	case !userActive:
-		return LineReadingResponse{
-			Status:        "inactive_account",
-			RelayCommand:  "OFF",
-			BalanceKwh:    bal,
-			Message:       "User account is inactive. Relay must stay off.",
-			AdminDisabled: adminDisabled,
-			OwnerDisabled: ownerDisabled,
-			UserInactive:  true,
-		}, nil
+	
 
 	default:
 		return LineReadingResponse{
@@ -225,7 +205,6 @@ func handleMeterOff(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req
 			Message:       "Meter is OFF.",
 			AdminDisabled: adminDisabled,
 			OwnerDisabled: ownerDisabled,
-			UserInactive:  !userActive,
 		}, nil
 	}
 }
@@ -233,9 +212,9 @@ func handleMeterOff(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req
 // ── handleMeterOn ─────────────────────────────────────────────────────────────
 // Called when the meter reports is_connected = true.
 // Saves the reading, debits the wallet, then evaluates override conditions
-// (admin kill, owner disable, inactive account) that must force the relay off regardless.
+// (admin kill, owner disable) that must force the relay off regardless.
 
-func handleMeterOn(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req models.LineReadingRequest, recordedAt time.Time, adminDisabled, ownerDisabled bool) (LineReadingResponse, error) {
+func handleMeterOn(tx *gorm.DB, meterID, userID uuid.UUID, req models.LineReadingRequest, recordedAt time.Time, adminDisabled, ownerDisabled bool) (LineReadingResponse, error) {
 
 	lr, err := createLineReading(tx, meterID, userID, req, recordedAt)
 	if err != nil {
@@ -256,10 +235,12 @@ func handleMeterOn(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req 
 	if err != nil {
 		return LineReadingResponse{}, fmt.Errorf("failed to fetch wallet: %w", err)
 	}
-	if req.ConsumedKwh > 0 {
-		debitErr := services.DebitWallet(tx, userID, req.ConsumedKwh, lr.ID.String())
+	if req.PolePowerVA > 0 {
+		loop_hours := req.LoopDuration / 36000;
+		consumedKwh := req.MeterPowerVA / 1000.0 * float64(loop_hours);
+		debitErr := services.DebitWallet(tx, userID, consumedKwh, lr.ID.String())
 
-		switch {
+		switch {	
 		case errors.Is(debitErr, services.ErrInsufficientBalance):
 			if err := models.TurnOffMeter(tx, meterID); err != nil {
 				return LineReadingResponse{}, fmt.Errorf("failed to turn off meter: %w", err)
@@ -271,7 +252,6 @@ func handleMeterOn(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req 
 				Message:       "Balance exhausted. Meter has been disconnected.",
 				AdminDisabled: adminDisabled,
 				OwnerDisabled: ownerDisabled,
-				UserInactive:  !userActive,
 			}, nil
 
 		case debitErr != nil:
@@ -287,7 +267,6 @@ func handleMeterOn(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req 
 					Message:       "Low balance",
 					AdminDisabled: adminDisabled,
 					OwnerDisabled: ownerDisabled,
-					UserInactive:  !userActive,
 				}
 			} else {
 				resp = LineReadingResponse{
@@ -297,7 +276,6 @@ func handleMeterOn(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req 
 					Message:       "Reading recorded.",
 					AdminDisabled: adminDisabled,
 					OwnerDisabled: ownerDisabled,
-					UserInactive:  !userActive,
 				}
 			}
 		}
@@ -309,12 +287,11 @@ func handleMeterOn(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req 
 			Message:       "Reading recorded. No energy consumed.",
 			AdminDisabled: adminDisabled,
 			OwnerDisabled: ownerDisabled,
-			UserInactive:  !userActive,
 		}
 	}
 
 	// ── Override checks (evaluated after debit so usage is always recorded) ──
-	// Priority: admin kill > owner disabled > inactive account. Both force the relay OFF
+	// Priority: admin kill > owner disabled. Both force the relay OFF
 	// regardless of what the debit path decided above.
 
 	switch {
@@ -326,7 +303,6 @@ func handleMeterOn(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req 
 			Message:       "Meter is administratively disabled. Contact your service provider.",
 			AdminDisabled: true,
 			OwnerDisabled: ownerDisabled,
-			UserInactive:  !userActive,
 		}, nil
 
 	case ownerDisabled:
@@ -337,19 +313,9 @@ func handleMeterOn(tx *gorm.DB, meterID, userID uuid.UUID, userActive bool, req 
 			Message:       "Meter has been disabled by the owner.",
 			AdminDisabled: adminDisabled,
 			OwnerDisabled: true,
-			UserInactive:  !userActive,
 		}, nil
 
-	case !userActive:
-		return LineReadingResponse{
-			Status:        "inactive_account",
-			RelayCommand:  "OFF",
-			BalanceKwh:    wallet.BalanceKwh,
-			Message:       "Account inactive: usage was debited from the wallet; relay remains off.",
-			AdminDisabled: adminDisabled,
-			OwnerDisabled: ownerDisabled,
-			UserInactive:  true,
-		}, nil
+	
 	}
 
 	return resp, nil

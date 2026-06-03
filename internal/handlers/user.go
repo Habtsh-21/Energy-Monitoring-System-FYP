@@ -62,6 +62,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"token": token})
 }
 
+
 func OwnerControlMeterHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
 	if !ok {
@@ -80,6 +81,7 @@ func OwnerControlMeterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
+	
 	meter, err  := models.GetMeterByID(user.MeterID)
 	if err != nil {
 		http.Error(w, "Meter not found", http.StatusNotFound)
@@ -88,32 +90,26 @@ func OwnerControlMeterHandler(w http.ResponseWriter, r *http.Request) {
 
 
 	var req struct {
-		Disabled bool `json:"disabled"`
+		IsDisabled bool `json:"disabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	if !req.Disabled && !user.IsActive {
-		http.Error(w, "Cannot enable meter: user account is inactive", http.StatusForbidden)
-		return
-	}
 
-	
-	if meter.AdminDisabled && !req.Disabled {
+	if meter.AdminDisabled{
 		http.Error(w, "Cannot enable meter: admin desabled the meter", http.StatusForbidden)
 		return
 	}
 
-	if err := models.SetOwnerDisabled(nil, user.MeterID, req.Disabled); err != nil {
-		
+	if err := models.SetOwnerState(user.MeterID, req.IsDisabled); err != nil {
 		http.Error(w, "Failed to update meter control: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	msg := "Meter enabled by owner"
-	if req.Disabled {
+	if req.IsDisabled {
 		msg = "Meter disabled by owner — relay forced OFF"
 	}
 	w.Header().Set("Content-Type", "application/json")

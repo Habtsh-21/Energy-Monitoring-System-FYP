@@ -3,7 +3,6 @@ package admin_mgt
 import (
 	"encoding/json"
 	"energy-monitoring-system/internal/models"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -157,32 +156,30 @@ func AdminControlMeterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Disabled bool `json:"disabled"`
+		IsDisabled bool `json:"disabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	if !req.Disabled {
-		u, err := models.GetUserByMeterID(meterID)
-		if err == nil && !u.IsActive {
-			http.Error(w, "Cannot enable meter: assigned user account is inactive", http.StatusForbidden)
-			return
-		}
+	meterStatus, err := models.GetMeterStatus(meterID)
+	if err != nil {
+		http.Error(w, "Failed to get meter status: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !req.IsDisabled && meterStatus.OwnerDisabled {
+		http.Error(w, "Cannot enable meter: disabled by owner", http.StatusForbidden)
+		return
 	}
 
-	if err := models.SetMeterStatus(nil, meterID, req.Disabled); err != nil {
-		if errors.Is(err, models.ErrMeterDisabledByOwner) {
-			http.Error(w, "Cannot enable meter: disabled by owner", http.StatusForbidden)
-			return
-		}
+	if err := models.SetAdminState(meterID, req.IsDisabled); err != nil {
 		http.Error(w, "Failed to update meter control: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	msg := "Meter enabled by admin"
-	if req.Disabled {
+	if req.IsDisabled {
 		msg = "Meter disabled by admin — relay forced OFF"
 	}
 	w.Header().Set("Content-Type", "application/json")

@@ -38,7 +38,7 @@ func RegisterRoutes(r *mux.Router) {
 	admin.HandleFunc("/users", admin_mgt.GetAllUserHandler).Methods("GET")
 	admin.HandleFunc("/user/{id}", admin_mgt.UpdateUserHandler).Methods("PUT")
 	admin.HandleFunc("/user/{id}", admin_mgt.DeleteUserHandler).Methods("DELETE")
-	admin.HandleFunc("/user/{id}/control", admin_mgt.AdminControlUserHandler).Methods("PATCH")
+	// admin.HandleFunc("/user/{id}/control", admin_mgt.AdminControlUserHandler).Methods("PATCH")
 	admin.HandleFunc("/meter", admin_mgt.MeterRegisterHandler).Methods("POST")
 	admin.HandleFunc("/meter/{id}", admin_mgt.GetMeterHandler).Methods("GET")
 	admin.HandleFunc("/meter/{id}", admin_mgt.UpdateMeterHandler).Methods("PUT")
