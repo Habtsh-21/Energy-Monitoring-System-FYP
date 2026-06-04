@@ -179,24 +179,36 @@ func GetMeterStatus(meterID uuid.UUID) (*MeterStatus, error) {
 
 
 func SetAdminState(meterID uuid.UUID, isDisabled bool) error {
-	return db.DB.Model(&Meter{}).Where("id = ?", meterID).Update("admin_disabled", isDisabled).Error
+    if isDisabled {
+        TurnOffMeter(meterID)
+    } else {
+        TurnOnMeter(meterID)
+    }
+
+    return db.DB.Model(&Meter{}).
+        Where("id = ?", meterID).
+        Update("admin_disabled", isDisabled).Error
 }
 
 func SetOwnerState(meterID uuid.UUID, isDisabled bool) error {
-	return db.DB.Model(&Meter{}).Where("id = ?", meterID).Update("owner_disabled", isDisabled).Error
+    if isDisabled {
+        TurnOffMeter(meterID)
+    } else {
+        TurnOnMeter(meterID)
+    }
+
+    return db.DB.Model(&Meter{}).
+        Where("id = ?", meterID).
+        Update("owner_disabled", isDisabled).Error
 }
 
 
-func TurnOffMeter(tx *gorm.DB, meterID uuid.UUID) error {
-	if tx == nil {
-		tx = db.DB
-	}
-	return tx.Model(&Meter{}).Where("id = ?", meterID).Update("relay_status", "OFF").Error
+func TurnOffMeter( meterID uuid.UUID) error {
+	
+	return db.DB.Model(&Meter{}).Where("id = ?", meterID).Update("relay_status", "OFF").Error
 }
 
-func TurnOnMeter(tx *gorm.DB, meterID uuid.UUID) error {
-	if tx == nil {
-		tx = db.DB
-	}
-	return tx.Model(&Meter{}).Where("id = ?", meterID).Update("relay_status", "ON").Error
+func TurnOnMeter( meterID uuid.UUID) error {
+
+	return db.DB.Model(&Meter{}).Where("id = ?", meterID).Update("relay_status", "ON").Error
 }

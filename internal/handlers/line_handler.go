@@ -242,7 +242,7 @@ func handleMeterOn(tx *gorm.DB, meterID, userID uuid.UUID, req models.LineReadin
 
 		switch {	
 		case errors.Is(debitErr, services.ErrInsufficientBalance):
-			if err := models.TurnOffMeter(tx, meterID); err != nil {
+			if err := models.TurnOffMeter(meterID); err != nil {
 				return LineReadingResponse{}, fmt.Errorf("failed to turn off meter: %w", err)
 			}
 			return LineReadingResponse{

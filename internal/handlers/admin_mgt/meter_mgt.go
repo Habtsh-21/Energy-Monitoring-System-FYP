@@ -168,7 +168,8 @@ func AdminControlMeterHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to get meter status: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if !req.IsDisabled && meterStatus.OwnerDisabled {
+
+	if meterStatus.OwnerDisabled {
 		http.Error(w, "Cannot enable meter: disabled by owner", http.StatusForbidden)
 		return
 	}
