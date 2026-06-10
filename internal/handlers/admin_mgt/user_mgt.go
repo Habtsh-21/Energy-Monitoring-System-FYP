@@ -184,29 +184,57 @@ func GetUserByPhoneHandler(w http.ResponseWriter, r *http.Request) {
 
 func UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	userId, err := uuid.Parse(vars["userId"])
+	userId, err := uuid.Parse(vars["id"])
 	if err != nil {
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
 	}
 
-	var updates map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+	var req models.UserRegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	updates["updated_at"] = time.Now()
-	if len(updates) == 0 {
+
+	updates := map[string]any{
+		"updated_at": time.Now(),
+	}
+	if req.FullName != "" {
+		updates["full_name"] = req.FullName
+	}
+	if req.PhoneNumber != "" {
+		updates["phone_number"] = req.PhoneNumber
+	}
+	// Address is an embedded struct — flatten each sub-field individually
+	if req.Address.Region != "" {
+		updates["region"] = req.Address.Region
+	}
+	if req.Address.City != "" {
+		updates["city"] = req.Address.City
+	}
+	if req.Address.SubCity != "" {
+		updates["sub_city"] = req.Address.SubCity
+	}
+	if req.Address.Kebele != "" {
+		updates["kebele"] = req.Address.Kebele
+	}
+	if req.Address.HouseNumber != "" {
+		updates["house_number"] = req.Address.HouseNumber
+	}
+
+	if len(updates) == 1 { // only updated_at means nothing real was provided
 		http.Error(w, "No fields to update", http.StatusBadRequest)
 		return
 	}
 
 	if err := models.UpdateUserParameters(db.DB, userId, updates); err != nil {
-		http.Error(w, "Failed to update user", http.StatusInternalServerError)
+		http.Error(w, "Failed to update user: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "User updated successfully"})
 }
 
 
@@ -345,10 +373,51 @@ func DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// AdminResetPasswordHandler lets an admin set a new password for any user
+// without requiring the current password.
+// PATCH /admin/user/{id}/password   Body: {"new_password": "..."}
+func AdminResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userID, err := uuid.Parse(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
 
+	var req struct {
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if len(req.NewPassword) < 6 {
+		http.Error(w, "Password must be at least 6 characters", http.StatusBadRequest)
+		return
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+		return
+	}
+
+	if err := models.UpdateUserParameters(db.DB, userID, map[string]any{
+		"password":   string(hashed),
+		"updated_at": time.Now(),
+	}); err != nil {
+		http.Error(w, "Failed to reset password: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Password reset successfully"})
+}
 
 
 // func AdminControlUserHandler(w http.ResponseWriter, r *http.Request) {
+
 // 	vars := mux.Vars(r)
 // 	userId, err := uuid.Parse(vars["id"])
 // 	if err != nil {
